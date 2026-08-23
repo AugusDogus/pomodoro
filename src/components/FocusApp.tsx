@@ -11,7 +11,6 @@ import {
   Plus,
   RotateCcw,
   Settings2,
-  Sparkles,
   Trash2,
   Volume2,
   VolumeX,
@@ -357,10 +356,7 @@ export default function FocusApp() {
       <div className="workspace-grid">
         <section className="focus-card" aria-labelledby="focus-heading">
           <div className="focus-card-topline">
-            <div>
-              <h2 id="focus-heading">{mode === "focus" ? "Focus session" : "Short break"}</h2>
-            </div>
-            <Sparkles aria-hidden="true" size={20} />
+            <h2 id="focus-heading">{mode === "focus" ? "Focus session" : "Short break"}</h2>
           </div>
 
           <div className="mode-switcher" aria-label="Timer mode">

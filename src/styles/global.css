@@ -75,7 +75,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 .focus-card::before { position: absolute; inset: 0; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: inherit; content: ""; pointer-events: none; }
 .focus-card-topline, .tasks-header { display: flex; align-items: flex-start; justify-content: space-between; }
 .focus-card h2, .tasks-card h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.035em; }
-.focus-card-topline > svg { color: #9eb2a4; }
 
 .mode-switcher { align-self: center; display: grid; grid-template-columns: 1fr 1fr; width: 256px; margin-top: 23px; padding: 4px; border: 1px solid var(--line-dark); border-radius: 999px; background: rgba(255, 255, 255, 0.04); }
 .mode-switcher button { height: 34px; border: 0; border-radius: 999px; color: #9fb0a5; background: transparent; font-size: 12px; font-weight: 650; cursor: pointer; transition: color 160ms ease, background-color 160ms ease, transform 120ms var(--ease-out); }
