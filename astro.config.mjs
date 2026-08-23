@@ -7,7 +7,7 @@ export default defineConfig({
     react(),
     AstroPWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "apple-touch-icon.png"],
+      includeAssets: ["favicon.png", "apple-touch-icon.png"],
       manifest: {
         name: "Pomodoro — Focus gently",
         short_name: "Pomodoro",
@@ -28,7 +28,7 @@ export default defineConfig({
             type: "image/png"
           },
           {
-            src: "/pwa-512x512.png",
+            src: "/pwa-512x512-maskable.png",
             sizes: "512x512",
             type: "image/png",
             purpose: "maskable"
@@ -42,4 +42,3 @@ export default defineConfig({
     })
   ]
 });
-
