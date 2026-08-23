@@ -18,6 +18,13 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  enableDesktopAlerts,
+  messageForPermissionResult,
+  showDesktopAlert,
+  timerAlertCopy,
+  type NotificationPermissionResult,
+} from "../lib/notifications";
 import { formatTime, progressFor, remainingFromEnd, TIMER_SECONDS, type TimerMode } from "../lib/timer";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -41,6 +48,8 @@ type Preferences = {
   focusMinutes: number;
   breakMinutes: number;
 };
+
+type AlertIssue = Exclude<NotificationPermissionResult, { status: "granted" }>;
 
 type StoredAppState = {
   tasks: Task[];
@@ -193,6 +202,7 @@ export default function FocusApp() {
     () => window.localStorage.getItem(INSTALL_DISMISSED_KEY) === "true",
   );
   const [shouldAutoStartBreak, setShouldAutoStartBreak] = useState(false);
+  const [alertIssue, setAlertIssue] = useState<AlertIssue | null>(null);
   const completedRef = useRef(false);
 
   const selectedTask = useMemo(
@@ -239,15 +249,9 @@ export default function FocusApp() {
     setEndTime(null);
 
     if (storedState.preferences.sound) playChime();
-    if (storedState.preferences.notifications && "Notification" in window && Notification.permission === "granted") {
-      new Notification(mode === "focus" ? "Focus session complete" : "Break complete", {
-        body: mode === "focus" && storedState.preferences.autoStartBreaks
-          ? "Your break timer has started."
-          : mode === "focus"
-            ? "Your focus timer has ended."
-            : "Your break timer has ended.",
-        icon: "/pwa-192x192.png",
-      });
+    if (storedState.preferences.notifications) {
+      const alert = timerAlertCopy(mode, storedState.preferences.autoStartBreaks);
+      void showDesktopAlert(alert.title, alert.body);
     }
 
     if (mode === "focus") {
@@ -373,6 +377,7 @@ export default function FocusApp() {
 
   async function toggleNotifications() {
     if (storedState.preferences.notifications) {
+      setAlertIssue(null);
       setStoredState((current) => ({
         ...current,
         preferences: { ...current.preferences, notifications: false },
@@ -380,12 +385,26 @@ export default function FocusApp() {
       return;
     }
 
-    if (!("Notification" in window)) return;
-    const permission = await Notification.requestPermission();
-    setStoredState((current) => ({
-      ...current,
-      preferences: { ...current.preferences, notifications: permission === "granted" },
-    }));
+    const result = await enableDesktopAlerts();
+    switch (result.status) {
+      case "granted":
+        setAlertIssue(null);
+        setStoredState((current) => ({
+          ...current,
+          preferences: { ...current.preferences, notifications: true },
+        }));
+        void showDesktopAlert("Desktop alerts on", "You’ll get a notice when a timer ends.");
+        return;
+      case "denied":
+      case "dismissed":
+      case "unsupported":
+        setAlertIssue(result);
+        return;
+      default: {
+        const _exhaustive: never = result;
+        return _exhaustive;
+      }
+    }
   }
 
   async function installApp() {
@@ -410,6 +429,7 @@ export default function FocusApp() {
             {isOnline ? "Saved locally" : "Working offline"}
           </span>
           <SettingsControl
+            alertIssue={alertIssue}
             durationLocked={status === "running"}
             onAdjustDuration={adjustDuration}
             onToggleAutoStartBreaks={() => setStoredState((current) => ({
@@ -561,6 +581,7 @@ export default function FocusApp() {
 }
 
 type SettingsControlProps = {
+  alertIssue: AlertIssue | null;
   durationLocked: boolean;
   onAdjustDuration: (mode: TimerMode, delta: number) => void;
   onToggleAutoStartBreaks: () => void;
@@ -613,7 +634,8 @@ function SettingsControl(props: SettingsControlProps) {
   );
 }
 
-function SettingsBody({ durationLocked, onAdjustDuration, onToggleAutoStartBreaks, onToggleNotifications, onToggleSound, preferences }: SettingsControlProps) {
+function SettingsBody({ alertIssue, durationLocked, onAdjustDuration, onToggleAutoStartBreaks, onToggleNotifications, onToggleSound, preferences }: SettingsControlProps) {
+  const alertMessage = alertIssue === null ? null : messageForPermissionResult(alertIssue);
   return (
     <>
         <div className="duration-settings">
@@ -645,10 +667,16 @@ function SettingsBody({ durationLocked, onAdjustDuration, onToggleAutoStartBreak
           </button>
           <button aria-pressed={preferences.notifications} className="settings-row" onClick={onToggleNotifications}>
             <span className="settings-icon">{preferences.notifications ? <Bell aria-hidden="true" size={18} /> : <BellOff aria-hidden="true" size={18} />}</span>
-            <span><strong>Desktop alerts</strong><small>Helpful when this tab is hidden</small></span>
+            <span><strong>Desktop alerts</strong><small>Helpful when the app is in the background</small></span>
             <span className="switch" data-checked={preferences.notifications}><i /></span>
           </button>
         </div>
+        {alertMessage !== null && (
+          <div className="settings-note" role="status">
+            <BellOff aria-hidden="true" size={17} />
+            <p>{alertMessage}</p>
+          </div>
+        )}
         <div className="settings-note">
           <Cloud aria-hidden="true" size={17} />
           <p>Tasks are stored on this device and available offline.</p>
