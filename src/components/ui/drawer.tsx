@@ -15,8 +15,10 @@ export function DrawerContent({ children, className, ...props }: DrawerContentPr
     <DrawerPrimitive.Portal>
       <DrawerPrimitive.Overlay className="drawer-overlay" />
       <DrawerPrimitive.Content className={cn("drawer-content", className)} {...props}>
-        <div aria-hidden="true" className="drawer-handle" />
-        {children}
+        <div className="drawer-scroll">
+          <div aria-hidden="true" className="drawer-handle" />
+          {children}
+        </div>
       </DrawerPrimitive.Content>
     </DrawerPrimitive.Portal>
   );
