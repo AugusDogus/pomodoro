@@ -351,11 +351,7 @@ export default function FocusApp() {
       </section>
 
       <div className="workspace-grid">
-        <section className="focus-card" aria-labelledby="focus-heading">
-          <div className="focus-card-topline">
-            <h2 id="focus-heading">{mode === "focus" ? "Focus session" : "Short break"}</h2>
-          </div>
-
+        <section aria-label="Timer" className="focus-card">
           <div className="mode-switcher" aria-label="Timer mode">
             <button aria-pressed={mode === "focus"} onClick={() => changeMode("focus")}>Focus <span>25m</span></button>
             <button aria-pressed={mode === "break"} onClick={() => changeMode("break")}>Break <span>5m</span></button>

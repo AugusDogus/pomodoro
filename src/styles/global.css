@@ -73,10 +73,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 }
 
 .focus-card::before { position: absolute; inset: 0; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: inherit; content: ""; pointer-events: none; }
-.focus-card-topline, .tasks-header { display: flex; align-items: flex-start; justify-content: space-between; }
-.focus-card h2, .tasks-card h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.035em; }
+.tasks-header { display: flex; align-items: flex-start; justify-content: space-between; }
+.tasks-card h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.035em; }
 
-.mode-switcher { align-self: center; display: grid; grid-template-columns: 1fr 1fr; width: 256px; margin-top: 23px; padding: 4px; border: 1px solid var(--line-dark); border-radius: 999px; background: rgba(255, 255, 255, 0.04); }
+.mode-switcher { align-self: center; display: grid; grid-template-columns: 1fr 1fr; width: 256px; padding: 4px; border: 1px solid var(--line-dark); border-radius: 999px; background: rgba(255, 255, 255, 0.04); }
 .mode-switcher button { height: 34px; border: 0; border-radius: 999px; color: #9fb0a5; background: transparent; font-size: 12px; font-weight: 650; cursor: pointer; transition: color 160ms ease, background-color 160ms ease, transform 120ms var(--ease-out); }
 .mode-switcher button[aria-pressed="true"] { color: var(--focus); background: #fffcf6; }
 .mode-switcher button span { margin-left: 3px; font-family: "DM Mono", monospace; font-size: 9px; opacity: 0.65; }
@@ -173,7 +173,6 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
   .page-intro { padding: 42px 3px 23px; }
   .page-intro h1 { font-size: 36px; }
   .focus-card, .tasks-card { min-height: 590px; padding: 22px; border-radius: 22px; }
-  .mode-switcher { margin-top: 22px; }
   .timer-wrap { width: min(326px, 83vw); margin-top: 17px; }
   .timer-content strong { font-size: 56px; }
   .selected-mark { display: none; }
