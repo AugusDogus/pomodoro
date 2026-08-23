@@ -350,17 +350,14 @@ export default function FocusApp() {
 
       <section className="page-intro">
         <div>
-          <p className="eyebrow">Your study space</p>
           <h1>{getGreeting()}</h1>
         </div>
-        <p>One task. One timer.<br />A little progress at a time.</p>
       </section>
 
       <div className="workspace-grid">
         <section className="focus-card" aria-labelledby="focus-heading">
           <div className="focus-card-topline">
             <div>
-              <p className="card-kicker">Now</p>
               <h2 id="focus-heading">{mode === "focus" ? "Focus session" : "Short break"}</h2>
             </div>
             <Sparkles aria-hidden="true" size={20} />
@@ -384,7 +381,6 @@ export default function FocusApp() {
               />
             </svg>
             <div className="timer-content">
-              <span className="timer-label">{status === "running" ? "Time to focus" : status === "paused" ? "Paused" : "Ready when you are"}</span>
               <strong>{formatTime(remaining)}</strong>
               <span className="timer-task">{selectedTask?.title ?? "Choose a task for this session"}</span>
             </div>
@@ -404,7 +400,6 @@ export default function FocusApp() {
         <section className="tasks-card" aria-labelledby="tasks-heading">
           <div className="tasks-header">
             <div>
-              <p className="card-kicker">Today</p>
               <h2 id="tasks-heading">What matters most?</h2>
             </div>
             <span className="task-count">{completedTasks}/{storedState.tasks.length}</span>
