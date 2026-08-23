@@ -33,6 +33,7 @@ type TimerStatus = "idle" | "running" | "paused";
 type Preferences = {
   sound: boolean;
   notifications: boolean;
+  autoStartBreaks: boolean;
   focusMinutes: number;
   breakMinutes: number;
 };
@@ -70,6 +71,7 @@ function defaultState(): StoredAppState {
     preferences: {
       sound: true,
       notifications: false,
+      autoStartBreaks: false,
       focusMinutes: TIMER_SECONDS.focus / 60,
       breakMinutes: TIMER_SECONDS.break / 60,
     },
@@ -134,6 +136,7 @@ function parseStoredState(raw: string | null): StoredAppState {
       preferences: {
         sound: value.preferences.sound,
         notifications: value.preferences.notifications,
+        autoStartBreaks: typeof value.preferences.autoStartBreaks === "boolean" ? value.preferences.autoStartBreaks : false,
         focusMinutes: parseDuration(value.preferences.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES),
         breakMinutes: parseDuration(value.preferences.breakMinutes, TIMER_SECONDS.break / 60, MAX_BREAK_MINUTES),
       },
@@ -180,6 +183,7 @@ export default function FocusApp() {
   const [taskTitle, setTaskTitle] = useState("");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [shouldAutoStartBreak, setShouldAutoStartBreak] = useState(false);
   const completedRef = useRef(false);
 
   const selectedTask = useMemo(
@@ -225,7 +229,11 @@ export default function FocusApp() {
     if (storedState.preferences.sound) playChime();
     if (storedState.preferences.notifications && "Notification" in window && Notification.permission === "granted") {
       new Notification(mode === "focus" ? "Focus session complete" : "Break complete", {
-        body: mode === "focus" ? "Your focus timer has ended." : "Your break timer has ended.",
+        body: mode === "focus" && storedState.preferences.autoStartBreaks
+          ? "Your break timer has started."
+          : mode === "focus"
+            ? "Your focus timer has ended."
+            : "Your break timer has ended.",
         icon: "/pwa-192x192.png",
       });
     }
@@ -241,11 +249,22 @@ export default function FocusApp() {
       }));
       setMode("break");
       setRemaining(durationSeconds(storedState.preferences, "break"));
+      setShouldAutoStartBreak(storedState.preferences.autoStartBreaks);
     } else {
       setMode("focus");
       setRemaining(durationSeconds(storedState.preferences, "focus"));
     }
   }, [mode, storedState.preferences]);
+
+  useEffect(() => {
+    if (!shouldAutoStartBreak || mode !== "break" || status !== "idle") return;
+    const breakSeconds = durationSeconds(storedState.preferences, "break");
+    completedRef.current = false;
+    setRemaining(breakSeconds);
+    setEndTime(Date.now() + breakSeconds * 1000);
+    setStatus("running");
+    setShouldAutoStartBreak(false);
+  }, [mode, shouldAutoStartBreak, status, storedState.preferences]);
 
   useEffect(() => {
     if (status !== "running" || endTime === null) return;
@@ -277,6 +296,7 @@ export default function FocusApp() {
 
   function resetTimer() {
     completedRef.current = false;
+    setShouldAutoStartBreak(false);
     setStatus("idle");
     setEndTime(null);
     setRemaining(durationSeconds(storedState.preferences, mode));
@@ -284,6 +304,7 @@ export default function FocusApp() {
 
   function changeMode(nextMode: TimerMode) {
     completedRef.current = false;
+    setShouldAutoStartBreak(false);
     setMode(nextMode);
     setStatus("idle");
     setEndTime(null);
@@ -371,6 +392,10 @@ export default function FocusApp() {
             installAvailable={installPrompt !== null}
             onAdjustDuration={adjustDuration}
             onInstall={installApp}
+            onToggleAutoStartBreaks={() => setStoredState((current) => ({
+              ...current,
+              preferences: { ...current.preferences, autoStartBreaks: !current.preferences.autoStartBreaks },
+            }))}
             onToggleNotifications={toggleNotifications}
             onToggleSound={() => setStoredState((current) => ({
               ...current,
@@ -481,12 +506,13 @@ type SettingsDialogProps = {
   installAvailable: boolean;
   onAdjustDuration: (mode: TimerMode, delta: number) => void;
   onInstall: () => void;
+  onToggleAutoStartBreaks: () => void;
   onToggleNotifications: () => void;
   onToggleSound: () => void;
   preferences: Preferences;
 };
 
-function SettingsDialog({ durationLocked, installAvailable, onAdjustDuration, onInstall, onToggleNotifications, onToggleSound, preferences }: SettingsDialogProps) {
+function SettingsDialog({ durationLocked, installAvailable, onAdjustDuration, onInstall, onToggleAutoStartBreaks, onToggleNotifications, onToggleSound, preferences }: SettingsDialogProps) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -514,6 +540,11 @@ function SettingsDialog({ durationLocked, installAvailable, onAdjustDuration, on
           />
         </div>
         <div className="settings-list">
+          <button aria-pressed={preferences.autoStartBreaks} className="settings-row" onClick={onToggleAutoStartBreaks}>
+            <span className="settings-icon"><Play aria-hidden="true" size={18} /></span>
+            <span><strong>Auto-start breaks</strong><small>After focus sessions</small></span>
+            <span className="switch" data-checked={preferences.autoStartBreaks}><i /></span>
+          </button>
           <button aria-pressed={preferences.sound} className="settings-row" onClick={onToggleSound}>
             <span className="settings-icon">{preferences.sound ? <Volume2 aria-hidden="true" size={18} /> : <VolumeX aria-hidden="true" size={18} />}</span>
             <span><strong>Sound</strong><small>A soft chime when time is up</small></span>
