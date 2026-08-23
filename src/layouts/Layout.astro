@@ -1,5 +1,6 @@
 ---
 import "../styles/global.css";
+import { pwaInfo } from "virtual:pwa-info";
 
 interface Props {
   title: string;
@@ -18,7 +19,9 @@ const { title, description } = Astro.props;
     <meta name="theme-color" content="#f5f1e8" />
     <link rel="icon" type="image/png" href="/favicon.png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    {pwaInfo && <Fragment set:html={pwaInfo.webManifest.linkTag} />}
     <title>{title}</title>
+    <script src="../pwa.ts"></script>
   </head>
   <body>
     <slot />
