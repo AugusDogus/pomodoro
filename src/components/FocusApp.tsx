@@ -5,7 +5,6 @@ import {
   Cloud,
   CloudOff,
   Download,
-  ListTodo,
   Pause,
   Play,
   Plus,
@@ -49,7 +48,6 @@ type InstallPromptEvent = Event & {
 };
 
 const STORAGE_KEY = "pomodoro.study-state.v1";
-const DAILY_GOAL = 6;
 const CIRCLE_RADIUS = 148;
 const CIRCLE_LENGTH = 2 * Math.PI * CIRCLE_RADIUS;
 
@@ -171,7 +169,6 @@ export default function FocusApp() {
   const totalSeconds = TIMER_SECONDS[mode];
   const timerProgress = progressFor(remaining, totalSeconds);
   const circleOffset = CIRCLE_LENGTH * (1 - timerProgress);
-  const sessionsToday = storedState.sessionDate === localDateKey() ? storedState.completedSessions : 0;
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(storedState));
@@ -396,7 +393,7 @@ export default function FocusApp() {
         <section className="tasks-card" aria-labelledby="tasks-heading">
           <div className="tasks-header">
             <div>
-              <h2 id="tasks-heading">What matters most?</h2>
+              <h2 id="tasks-heading">Tasks</h2>
             </div>
             <span className="task-count">{completedTasks}/{storedState.tasks.length}</span>
           </div>
@@ -406,14 +403,7 @@ export default function FocusApp() {
           </div>
 
           <div className="task-list">
-            {storedState.tasks.length === 0 ? (
-              <div className="empty-state">
-                <span><ListTodo aria-hidden="true" size={22} /></span>
-                <h3>A clear page for a clear mind.</h3>
-                <p>Add the first thing you’d like to finish today.</p>
-              </div>
-            ) : (
-              storedState.tasks.map((task) => (
+            {storedState.tasks.map((task) => (
                 <div className="task-row" data-completed={task.completed} data-selected={task.id === storedState.selectedTaskId} key={task.id}>
                   <Checkbox
                     aria-label={`Mark ${task.title} ${task.completed ? "incomplete" : "complete"}`}
@@ -432,8 +422,7 @@ export default function FocusApp() {
                     <Trash2 aria-hidden="true" size={16} />
                   </Button>
                 </div>
-              ))
-            )}
+              ))}
           </div>
 
           <form className="add-task" onSubmit={addTask}>
@@ -450,15 +439,6 @@ export default function FocusApp() {
         </section>
       </div>
 
-      <footer className="daily-summary">
-        <div className="session-dots" aria-hidden="true">
-          {Array.from({ length: DAILY_GOAL }, (_, index) => (
-            <span data-filled={index < sessionsToday} key={index} />
-          ))}
-        </div>
-        <p><strong>{sessionsToday} of {DAILY_GOAL}</strong> focus sessions today</p>
-        <span>Slow progress is still progress.</span>
-      </footer>
     </main>
   );
 }
