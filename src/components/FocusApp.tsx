@@ -4,12 +4,14 @@ import {
   Check,
   Cloud,
   CloudOff,
+  ListTodo,
   Minus,
   Pause,
   Play,
   Plus,
   RotateCcw,
   Settings2,
+  Timer as TimerIcon,
   Trash2,
   Volume2,
   VolumeX,
@@ -20,6 +22,7 @@ import { formatTime, progressFor, remainingFromEnd, TIMER_SECONDS, type TimerMod
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "./ui/dialog";
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerTitle, DrawerTrigger } from "./ui/drawer";
 
 type Task = {
   id: string;
@@ -29,6 +32,7 @@ type Task = {
 };
 
 type TimerStatus = "idle" | "running" | "paused";
+type MobileView = "timer" | "tasks";
 
 type Preferences = {
   sound: boolean;
@@ -178,6 +182,7 @@ export default function FocusApp() {
     parseStoredState(window.localStorage.getItem(STORAGE_KEY)),
   );
   const [mode, setMode] = useState<TimerMode>("focus");
+  const [mobileView, setMobileView] = useState<MobileView>("timer");
   const [status, setStatus] = useState<TimerStatus>("idle");
   const [remaining, setRemaining] = useState(() => durationSeconds(storedState.preferences, "focus"));
   const [endTime, setEndTime] = useState<number | null>(null);
@@ -361,6 +366,11 @@ export default function FocusApp() {
     }));
   }
 
+  function selectTask(taskId: string) {
+    setStoredState((current) => ({ ...current, selectedTaskId: taskId }));
+    setMobileView("timer");
+  }
+
   async function toggleNotifications() {
     if (storedState.preferences.notifications) {
       setStoredState((current) => ({
@@ -399,7 +409,7 @@ export default function FocusApp() {
             {isOnline ? <Cloud aria-hidden="true" size={15} /> : <CloudOff aria-hidden="true" size={15} />}
             {isOnline ? "Saved locally" : "Working offline"}
           </span>
-          <SettingsDialog
+          <SettingsControl
             durationLocked={status === "running"}
             onAdjustDuration={adjustDuration}
             onToggleAutoStartBreaks={() => setStoredState((current) => ({
@@ -423,7 +433,13 @@ export default function FocusApp() {
       </section>
 
       <div className="workspace-grid">
-        <section aria-label="Timer" className="focus-card">
+        <section
+          aria-labelledby="mobile-timer-tab"
+          className="focus-card"
+          data-mobile-active={mobileView === "timer"}
+          id="timer-panel"
+          role="tabpanel"
+        >
           <div className="mode-switcher" aria-label="Timer mode">
             <button aria-pressed={mode === "focus"} onClick={() => changeMode("focus")}>Focus <span>{storedState.preferences.focusMinutes}m</span></button>
             <button aria-pressed={mode === "break"} onClick={() => changeMode("break")}>Break <span>{storedState.preferences.breakMinutes}m</span></button>
@@ -458,7 +474,13 @@ export default function FocusApp() {
           </div>
         </section>
 
-        <section className="tasks-card" aria-labelledby="tasks-heading">
+        <section
+          aria-labelledby="mobile-tasks-tab"
+          className="tasks-card"
+          data-mobile-active={mobileView === "tasks"}
+          id="tasks-panel"
+          role="tabpanel"
+        >
           <div className="tasks-header">
             <div>
               <h2 id="tasks-heading">Tasks</h2>
@@ -480,7 +502,7 @@ export default function FocusApp() {
                   />
                   <button
                     className="task-select"
-                    onClick={() => setStoredState((current) => ({ ...current, selectedTaskId: task.id }))}
+                    onClick={() => selectTask(task.id)}
                   >
                     <span>{task.title}</span>
                     <small>{task.pomodoros > 0 ? `${task.pomodoros} ${task.pomodoros === 1 ? "session" : "sessions"}` : task.id === storedState.selectedTaskId ? "Focusing next" : "Choose to focus"}</small>
@@ -507,6 +529,29 @@ export default function FocusApp() {
         </section>
       </div>
 
+      <nav aria-label="Main navigation" className="mobile-tabs" role="tablist">
+        <button
+          aria-controls="timer-panel"
+          aria-selected={mobileView === "timer"}
+          id="mobile-timer-tab"
+          onClick={() => setMobileView("timer")}
+          role="tab"
+        >
+          <TimerIcon aria-hidden="true" size={19} />
+          Timer
+        </button>
+        <button
+          aria-controls="tasks-panel"
+          aria-selected={mobileView === "tasks"}
+          id="mobile-tasks-tab"
+          onClick={() => setMobileView("tasks")}
+          role="tab"
+        >
+          <ListTodo aria-hidden="true" size={19} />
+          Tasks
+        </button>
+      </nav>
+
       {installPrompt !== null && !installDismissed && (
         <InstallBanner onDismiss={dismissInstall} onInstall={installApp} />
       )}
@@ -515,7 +560,7 @@ export default function FocusApp() {
   );
 }
 
-type SettingsDialogProps = {
+type SettingsControlProps = {
   durationLocked: boolean;
   onAdjustDuration: (mode: TimerMode, delta: number) => void;
   onToggleAutoStartBreaks: () => void;
@@ -524,17 +569,53 @@ type SettingsDialogProps = {
   preferences: Preferences;
 };
 
-function SettingsDialog({ durationLocked, onAdjustDuration, onToggleAutoStartBreaks, onToggleNotifications, onToggleSound, preferences }: SettingsDialogProps) {
+function SettingsControl(props: SettingsControlProps) {
   return (
-    <Dialog>
-      <DialogTrigger asChild>
-        <Button aria-label="Open settings" size="icon" variant="icon">
-          <Settings2 aria-hidden="true" size={18} />
-        </Button>
-      </DialogTrigger>
-      <DialogContent>
-        <DialogTitle>Settings</DialogTitle>
-        <DialogDescription>Timer, sound, and notification settings.</DialogDescription>
+    <>
+      <div className="settings-desktop">
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button aria-label="Open settings" size="icon" variant="icon">
+              <Settings2 aria-hidden="true" size={18} />
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogTitle>Settings</DialogTitle>
+            <DialogDescription>Timer, sound, and notification settings.</DialogDescription>
+            <SettingsBody {...props} />
+          </DialogContent>
+        </Dialog>
+      </div>
+      <div className="settings-mobile">
+        <Drawer>
+          <DrawerTrigger asChild>
+            <Button aria-label="Open settings" size="icon" variant="icon">
+              <Settings2 aria-hidden="true" size={18} />
+            </Button>
+          </DrawerTrigger>
+          <DrawerContent>
+            <div className="drawer-heading">
+              <div>
+                <DrawerTitle>Settings</DrawerTitle>
+                <DrawerDescription>Timer, sound, and notification settings.</DrawerDescription>
+              </div>
+              <DrawerClose asChild>
+                <Button aria-label="Close settings" className="drawer-close" size="icon" variant="ghost">
+                  <X aria-hidden="true" size={18} />
+                </Button>
+              </DrawerClose>
+            </div>
+            <SettingsBody {...props} />
+          </DrawerContent>
+        </Drawer>
+      </div>
+    </>
+  );
+}
+
+function SettingsBody({ durationLocked, onAdjustDuration, onToggleAutoStartBreaks, onToggleNotifications, onToggleSound, preferences }: SettingsControlProps) {
+  return (
+    <>
         <div className="duration-settings">
           <DurationRow
             disabled={durationLocked}
@@ -572,8 +653,7 @@ function SettingsDialog({ durationLocked, onAdjustDuration, onToggleAutoStartBre
           <Cloud aria-hidden="true" size={17} />
           <p>Tasks are stored on this device and available offline.</p>
         </div>
-      </DialogContent>
-    </Dialog>
+    </>
   );
 }
 
