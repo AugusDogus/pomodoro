@@ -157,7 +157,33 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 .settings-note { display: flex; gap: 10px; margin-top: 18px; padding: 13px; border-radius: 12px; color: #617267; background: #f0f2ed; }
 .settings-note > svg { flex: 0 0 auto; margin-top: 2px; }
 .settings-note p { margin: 0; font-size: 10px; line-height: 1.55; }
-.install-button { width: 100%; margin-top: 12px; }
+.install-banner {
+  position: fixed;
+  z-index: 30;
+  bottom: 18px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(390px, calc(100% - 28px));
+  min-height: 54px;
+  padding: 8px 8px 8px 17px;
+  border: 1px solid rgba(37, 55, 47, 0.14);
+  border-radius: 15px;
+  background: #fffcf6;
+  box-shadow: 0 16px 48px rgba(26, 37, 31, 0.2);
+  transform: translateX(-50%);
+  transition: opacity 200ms ease, transform 200ms var(--ease-out);
+
+  @starting-style {
+    opacity: 0;
+    transform: translate(-50%, calc(100% + 24px));
+  }
+}
+
+.install-banner > span { font-size: 12px; font-weight: 680; }
+.install-banner > div { display: flex; align-items: center; gap: 2px; }
+.install-dismiss { width: 34px; height: 34px; padding: 0; }
 
 @media (hover: hover) and (pointer: fine) {
   .button-primary:hover { background: var(--accent-dark); }
@@ -182,6 +208,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
   .timer-wrap { width: min(326px, 83vw); margin-top: 17px; }
   .timer-content strong { font-size: 56px; }
   .selected-mark { display: none; }
+  .install-banner { bottom: 12px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

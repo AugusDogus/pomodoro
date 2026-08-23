@@ -4,7 +4,6 @@ import {
   Check,
   Cloud,
   CloudOff,
-  Download,
   Minus,
   Pause,
   Play,
@@ -14,6 +13,7 @@ import {
   Trash2,
   Volume2,
   VolumeX,
+  X,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatTime, progressFor, remainingFromEnd, TIMER_SECONDS, type TimerMode } from "../lib/timer";
@@ -52,6 +52,7 @@ type InstallPromptEvent = Event & {
 };
 
 const STORAGE_KEY = "pomodoro.study-state.v1";
+const INSTALL_DISMISSED_KEY = "pomodoro.install-dismissed.v1";
 const CIRCLE_RADIUS = 148;
 const CIRCLE_LENGTH = 2 * Math.PI * CIRCLE_RADIUS;
 const MAX_FOCUS_MINUTES = 120;
@@ -183,6 +184,9 @@ export default function FocusApp() {
   const [taskTitle, setTaskTitle] = useState("");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [installPrompt, setInstallPrompt] = useState<InstallPromptEvent | null>(null);
+  const [installDismissed, setInstallDismissed] = useState(
+    () => window.localStorage.getItem(INSTALL_DISMISSED_KEY) === "true",
+  );
   const [shouldAutoStartBreak, setShouldAutoStartBreak] = useState(false);
   const completedRef = useRef(false);
 
@@ -209,14 +213,17 @@ export default function FocusApp() {
         setInstallPrompt(event);
       }
     };
+    const handleInstalled = () => setInstallPrompt(null);
 
     window.addEventListener("online", handleOnline);
     window.addEventListener("offline", handleOffline);
     window.addEventListener("beforeinstallprompt", handleInstallPrompt);
+    window.addEventListener("appinstalled", handleInstalled);
     return () => {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
       window.removeEventListener("beforeinstallprompt", handleInstallPrompt);
+      window.removeEventListener("appinstalled", handleInstalled);
     };
   }, []);
 
@@ -378,6 +385,11 @@ export default function FocusApp() {
     setInstallPrompt(null);
   }
 
+  function dismissInstall() {
+    window.localStorage.setItem(INSTALL_DISMISSED_KEY, "true");
+    setInstallDismissed(true);
+  }
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -389,9 +401,7 @@ export default function FocusApp() {
           </span>
           <SettingsDialog
             durationLocked={status === "running"}
-            installAvailable={installPrompt !== null}
             onAdjustDuration={adjustDuration}
-            onInstall={installApp}
             onToggleAutoStartBreaks={() => setStoredState((current) => ({
               ...current,
               preferences: { ...current.preferences, autoStartBreaks: !current.preferences.autoStartBreaks },
@@ -497,22 +507,24 @@ export default function FocusApp() {
         </section>
       </div>
 
+      {installPrompt !== null && !installDismissed && (
+        <InstallBanner onDismiss={dismissInstall} onInstall={installApp} />
+      )}
+
     </main>
   );
 }
 
 type SettingsDialogProps = {
   durationLocked: boolean;
-  installAvailable: boolean;
   onAdjustDuration: (mode: TimerMode, delta: number) => void;
-  onInstall: () => void;
   onToggleAutoStartBreaks: () => void;
   onToggleNotifications: () => void;
   onToggleSound: () => void;
   preferences: Preferences;
 };
 
-function SettingsDialog({ durationLocked, installAvailable, onAdjustDuration, onInstall, onToggleAutoStartBreaks, onToggleNotifications, onToggleSound, preferences }: SettingsDialogProps) {
+function SettingsDialog({ durationLocked, onAdjustDuration, onToggleAutoStartBreaks, onToggleNotifications, onToggleSound, preferences }: SettingsDialogProps) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -560,13 +572,27 @@ function SettingsDialog({ durationLocked, installAvailable, onAdjustDuration, on
           <Cloud aria-hidden="true" size={17} />
           <p>Tasks are stored on this device and available offline.</p>
         </div>
-        {installAvailable && (
-          <Button className="install-button" onClick={onInstall} variant="secondary">
-            <Download aria-hidden="true" size={17} /> Install as an app
-          </Button>
-        )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+type InstallBannerProps = {
+  onDismiss: () => void;
+  onInstall: () => void;
+};
+
+function InstallBanner({ onDismiss, onInstall }: InstallBannerProps) {
+  return (
+    <aside aria-label="Install Pomodoro" className="install-banner">
+      <span>Install Pomodoro</span>
+      <div>
+        <Button onClick={onInstall} size="small">Install</Button>
+        <Button aria-label="Dismiss install prompt" className="install-dismiss" onClick={onDismiss} size="icon" variant="ghost">
+          <X aria-hidden="true" size={16} />
+        </Button>
+      </div>
+    </aside>
   );
 }
 
