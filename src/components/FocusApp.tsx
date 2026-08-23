@@ -5,6 +5,7 @@ import {
   Cloud,
   CloudOff,
   Download,
+  Minus,
   Pause,
   Play,
   Plus,
@@ -32,6 +33,8 @@ type TimerStatus = "idle" | "running" | "paused";
 type Preferences = {
   sound: boolean;
   notifications: boolean;
+  focusMinutes: number;
+  breakMinutes: number;
 };
 
 type StoredAppState = {
@@ -50,6 +53,8 @@ type InstallPromptEvent = Event & {
 const STORAGE_KEY = "pomodoro.study-state.v1";
 const CIRCLE_RADIUS = 148;
 const CIRCLE_LENGTH = 2 * Math.PI * CIRCLE_RADIUS;
+const MAX_FOCUS_MINUTES = 120;
+const MAX_BREAK_MINUTES = 60;
 
 function localDateKey(): string {
   const today = new Date();
@@ -62,7 +67,12 @@ function defaultState(): StoredAppState {
     selectedTaskId: null,
     completedSessions: 0,
     sessionDate: localDateKey(),
-    preferences: { sound: true, notifications: false },
+    preferences: {
+      sound: true,
+      notifications: false,
+      focusMinutes: TIMER_SECONDS.focus / 60,
+      breakMinutes: TIMER_SECONDS.break / 60,
+    },
   };
 }
 
@@ -87,6 +97,16 @@ function isTask(value: unknown): value is Task {
     typeof value.completed === "boolean" &&
     typeof value.pomodoros === "number"
   );
+}
+
+function parseDuration(value: unknown, fallback: number, maximum: number): number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= maximum
+    ? value
+    : fallback;
+}
+
+function durationSeconds(preferences: Preferences, mode: TimerMode): number {
+  return (mode === "focus" ? preferences.focusMinutes : preferences.breakMinutes) * 60;
 }
 
 function parseStoredState(raw: string | null): StoredAppState {
@@ -114,6 +134,8 @@ function parseStoredState(raw: string | null): StoredAppState {
       preferences: {
         sound: value.preferences.sound,
         notifications: value.preferences.notifications,
+        focusMinutes: parseDuration(value.preferences.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES),
+        breakMinutes: parseDuration(value.preferences.breakMinutes, TIMER_SECONDS.break / 60, MAX_BREAK_MINUTES),
       },
     };
   } catch {
@@ -153,7 +175,7 @@ export default function FocusApp() {
   );
   const [mode, setMode] = useState<TimerMode>("focus");
   const [status, setStatus] = useState<TimerStatus>("idle");
-  const [remaining, setRemaining] = useState(TIMER_SECONDS.focus);
+  const [remaining, setRemaining] = useState(() => durationSeconds(storedState.preferences, "focus"));
   const [endTime, setEndTime] = useState<number | null>(null);
   const [taskTitle, setTaskTitle] = useState("");
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -166,7 +188,7 @@ export default function FocusApp() {
   );
   const completedTasks = storedState.tasks.filter((task) => task.completed).length;
   const taskProgress = storedState.tasks.length === 0 ? 0 : completedTasks / storedState.tasks.length;
-  const totalSeconds = TIMER_SECONDS[mode];
+  const totalSeconds = durationSeconds(storedState.preferences, mode);
   const timerProgress = progressFor(remaining, totalSeconds);
   const circleOffset = CIRCLE_LENGTH * (1 - timerProgress);
 
@@ -203,7 +225,7 @@ export default function FocusApp() {
     if (storedState.preferences.sound) playChime();
     if (storedState.preferences.notifications && "Notification" in window && Notification.permission === "granted") {
       new Notification(mode === "focus" ? "Focus session complete" : "Break complete", {
-        body: mode === "focus" ? "Nice work. Take five minutes to reset." : "Ready for another gentle focus?",
+        body: mode === "focus" ? "Your focus timer has ended." : "Your break timer has ended.",
         icon: "/pwa-192x192.png",
       });
     }
@@ -218,12 +240,12 @@ export default function FocusApp() {
         ),
       }));
       setMode("break");
-      setRemaining(TIMER_SECONDS.break);
+      setRemaining(durationSeconds(storedState.preferences, "break"));
     } else {
       setMode("focus");
-      setRemaining(TIMER_SECONDS.focus);
+      setRemaining(durationSeconds(storedState.preferences, "focus"));
     }
-  }, [mode, storedState.preferences.notifications, storedState.preferences.sound]);
+  }, [mode, storedState.preferences]);
 
   useEffect(() => {
     if (status !== "running" || endTime === null) return;
@@ -257,7 +279,7 @@ export default function FocusApp() {
     completedRef.current = false;
     setStatus("idle");
     setEndTime(null);
-    setRemaining(TIMER_SECONDS[mode]);
+    setRemaining(durationSeconds(storedState.preferences, mode));
   }
 
   function changeMode(nextMode: TimerMode) {
@@ -265,7 +287,20 @@ export default function FocusApp() {
     setMode(nextMode);
     setStatus("idle");
     setEndTime(null);
-    setRemaining(TIMER_SECONDS[nextMode]);
+    setRemaining(durationSeconds(storedState.preferences, nextMode));
+  }
+
+  function adjustDuration(targetMode: TimerMode, delta: number) {
+    if (status === "running") return;
+    const preferenceKey = targetMode === "focus" ? "focusMinutes" : "breakMinutes";
+    const maximum = targetMode === "focus" ? MAX_FOCUS_MINUTES : MAX_BREAK_MINUTES;
+    const nextMinutes = Math.min(maximum, Math.max(1, storedState.preferences[preferenceKey] + delta));
+
+    setStoredState((current) => ({
+      ...current,
+      preferences: { ...current.preferences, [preferenceKey]: nextMinutes },
+    }));
+    if (mode === targetMode) setRemaining(nextMinutes * 60);
   }
 
   function addTask(event: React.SyntheticEvent<HTMLFormElement>) {
@@ -332,7 +367,9 @@ export default function FocusApp() {
             {isOnline ? "Saved locally" : "Working offline"}
           </span>
           <SettingsDialog
+            durationLocked={status === "running"}
             installAvailable={installPrompt !== null}
+            onAdjustDuration={adjustDuration}
             onInstall={installApp}
             onToggleNotifications={toggleNotifications}
             onToggleSound={() => setStoredState((current) => ({
@@ -353,8 +390,8 @@ export default function FocusApp() {
       <div className="workspace-grid">
         <section aria-label="Timer" className="focus-card">
           <div className="mode-switcher" aria-label="Timer mode">
-            <button aria-pressed={mode === "focus"} onClick={() => changeMode("focus")}>Focus <span>25m</span></button>
-            <button aria-pressed={mode === "break"} onClick={() => changeMode("break")}>Break <span>5m</span></button>
+            <button aria-pressed={mode === "focus"} onClick={() => changeMode("focus")}>Focus <span>{storedState.preferences.focusMinutes}m</span></button>
+            <button aria-pressed={mode === "break"} onClick={() => changeMode("break")}>Break <span>{storedState.preferences.breakMinutes}m</span></button>
           </div>
 
           <div className="timer-wrap" aria-live="polite" aria-atomic="true">
@@ -378,7 +415,7 @@ export default function FocusApp() {
           <div className="timer-actions">
             <Button className="timer-primary" onClick={toggleTimer}>
               {status === "running" ? <Pause aria-hidden="true" fill="currentColor" size={18} /> : <Play aria-hidden="true" fill="currentColor" size={18} />}
-              {status === "running" ? "Pause" : status === "paused" ? "Resume" : "Start focus"}
+              {status === "running" ? "Pause" : status === "paused" ? "Resume" : `Start ${mode}`}
             </Button>
             <Button aria-label="Reset timer" className="timer-reset" onClick={resetTimer} size="icon" variant="secondary">
               <RotateCcw aria-hidden="true" size={18} />
@@ -440,14 +477,16 @@ export default function FocusApp() {
 }
 
 type SettingsDialogProps = {
+  durationLocked: boolean;
   installAvailable: boolean;
+  onAdjustDuration: (mode: TimerMode, delta: number) => void;
   onInstall: () => void;
   onToggleNotifications: () => void;
   onToggleSound: () => void;
   preferences: Preferences;
 };
 
-function SettingsDialog({ installAvailable, onInstall, onToggleNotifications, onToggleSound, preferences }: SettingsDialogProps) {
+function SettingsDialog({ durationLocked, installAvailable, onAdjustDuration, onInstall, onToggleNotifications, onToggleSound, preferences }: SettingsDialogProps) {
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -456,8 +495,24 @@ function SettingsDialog({ installAvailable, onInstall, onToggleNotifications, on
         </Button>
       </DialogTrigger>
       <DialogContent>
-        <DialogTitle>Keep things gentle.</DialogTitle>
-        <DialogDescription>Choose how Pomodoro lets you know a session is complete.</DialogDescription>
+        <DialogTitle>Settings</DialogTitle>
+        <DialogDescription>Timer, sound, and notification settings.</DialogDescription>
+        <div className="duration-settings">
+          <DurationRow
+            disabled={durationLocked}
+            label="Focus"
+            maximum={MAX_FOCUS_MINUTES}
+            minutes={preferences.focusMinutes}
+            onChange={(delta) => onAdjustDuration("focus", delta)}
+          />
+          <DurationRow
+            disabled={durationLocked}
+            label="Break"
+            maximum={MAX_BREAK_MINUTES}
+            minutes={preferences.breakMinutes}
+            onChange={(delta) => onAdjustDuration("break", delta)}
+          />
+        </div>
         <div className="settings-list">
           <button aria-pressed={preferences.sound} className="settings-row" onClick={onToggleSound}>
             <span className="settings-icon">{preferences.sound ? <Volume2 aria-hidden="true" size={18} /> : <VolumeX aria-hidden="true" size={18} />}</span>
@@ -472,7 +527,7 @@ function SettingsDialog({ installAvailable, onInstall, onToggleNotifications, on
         </div>
         <div className="settings-note">
           <Cloud aria-hidden="true" size={17} />
-          <p><strong>Private by default</strong><br />Tasks stay on this device and work without internet.</p>
+          <p>Tasks are stored on this device and available offline.</p>
         </div>
         {installAvailable && (
           <Button className="install-button" onClick={onInstall} variant="secondary">
@@ -481,5 +536,44 @@ function SettingsDialog({ installAvailable, onInstall, onToggleNotifications, on
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+type DurationRowProps = {
+  disabled: boolean;
+  label: string;
+  maximum: number;
+  minutes: number;
+  onChange: (delta: number) => void;
+};
+
+function DurationRow({ disabled, label, maximum, minutes, onChange }: DurationRowProps) {
+  return (
+    <div className="duration-row">
+      <span>{label}</span>
+      <div className="duration-stepper">
+        <Button
+          aria-label={`Decrease ${label.toLowerCase()} timer`}
+          className="duration-button"
+          disabled={disabled || minutes <= 1}
+          onClick={() => onChange(-5)}
+          size="icon"
+          variant="ghost"
+        >
+          <Minus aria-hidden="true" size={14} />
+        </Button>
+        <output aria-live="polite">{minutes} min</output>
+        <Button
+          aria-label={`Increase ${label.toLowerCase()} timer`}
+          className="duration-button"
+          disabled={disabled || minutes >= maximum}
+          onClick={() => onChange(5)}
+          size="icon"
+          variant="ghost"
+        >
+          <Plus aria-hidden="true" size={14} />
+        </Button>
+      </div>
+    </div>
   );
 }
