@@ -40,6 +40,7 @@ type StoredAppState = {
   tasks: Task[];
   selectedTaskId: string | null;
   completedSessions: number;
+  sessionDate: string;
   preferences: Preferences;
 };
 
@@ -53,12 +54,20 @@ const DAILY_GOAL = 6;
 const CIRCLE_RADIUS = 148;
 const CIRCLE_LENGTH = 2 * Math.PI * CIRCLE_RADIUS;
 
-const DEFAULT_STATE: StoredAppState = {
-  tasks: [],
-  selectedTaskId: null,
-  completedSessions: 0,
-  preferences: { sound: true, notifications: false },
-};
+function localDateKey(): string {
+  const today = new Date();
+  return [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
+}
+
+function defaultState(): StoredAppState {
+  return {
+    tasks: [],
+    selectedTaskId: null,
+    completedSessions: 0,
+    sessionDate: localDateKey(),
+    preferences: { sound: true, notifications: false },
+  };
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -84,30 +93,34 @@ function isTask(value: unknown): value is Task {
 }
 
 function parseStoredState(raw: string | null): StoredAppState {
-  if (raw === null) return DEFAULT_STATE;
+  if (raw === null) return defaultState();
 
   try {
     const value: unknown = JSON.parse(raw);
-    if (!isRecord(value)) return DEFAULT_STATE;
-    if (!Array.isArray(value.tasks) || !value.tasks.every(isTask)) return DEFAULT_STATE;
-    if (value.selectedTaskId !== null && typeof value.selectedTaskId !== "string") return DEFAULT_STATE;
-    if (typeof value.completedSessions !== "number") return DEFAULT_STATE;
-    if (!isRecord(value.preferences)) return DEFAULT_STATE;
+    if (!isRecord(value)) return defaultState();
+    if (!Array.isArray(value.tasks) || !value.tasks.every(isTask)) return defaultState();
+    if (value.selectedTaskId !== null && typeof value.selectedTaskId !== "string") return defaultState();
+    if (typeof value.completedSessions !== "number") return defaultState();
+    if (!isRecord(value.preferences)) return defaultState();
     if (typeof value.preferences.sound !== "boolean" || typeof value.preferences.notifications !== "boolean") {
-      return DEFAULT_STATE;
+      return defaultState();
     }
+
+    const today = localDateKey();
+    const storedDate = typeof value.sessionDate === "string" ? value.sessionDate : today;
 
     return {
       tasks: value.tasks,
       selectedTaskId: value.selectedTaskId,
-      completedSessions: value.completedSessions,
+      completedSessions: storedDate === today ? value.completedSessions : 0,
+      sessionDate: today,
       preferences: {
         sound: value.preferences.sound,
         notifications: value.preferences.notifications,
       },
     };
   } catch {
-    return DEFAULT_STATE;
+    return defaultState();
   }
 }
 
@@ -159,6 +172,7 @@ export default function FocusApp() {
   const totalSeconds = TIMER_SECONDS[mode];
   const timerProgress = progressFor(remaining, totalSeconds);
   const circleOffset = CIRCLE_LENGTH * (1 - timerProgress);
+  const sessionsToday = storedState.sessionDate === localDateKey() ? storedState.completedSessions : 0;
 
   useEffect(() => {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(storedState));
@@ -201,7 +215,8 @@ export default function FocusApp() {
     if (mode === "focus") {
       setStoredState((current) => ({
         ...current,
-        completedSessions: current.completedSessions + 1,
+        completedSessions: current.sessionDate === localDateKey() ? current.completedSessions + 1 : 1,
+        sessionDate: localDateKey(),
         tasks: current.tasks.map((task) =>
           task.id === current.selectedTaskId ? { ...task, pomodoros: task.pomodoros + 1 } : task,
         ),
@@ -447,10 +462,10 @@ export default function FocusApp() {
       <footer className="daily-summary">
         <div className="session-dots" aria-hidden="true">
           {Array.from({ length: DAILY_GOAL }, (_, index) => (
-            <span data-filled={index < storedState.completedSessions} key={index} />
+            <span data-filled={index < sessionsToday} key={index} />
           ))}
         </div>
-        <p><strong>{storedState.completedSessions} of {DAILY_GOAL}</strong> focus sessions today</p>
+        <p><strong>{sessionsToday} of {DAILY_GOAL}</strong> focus sessions today</p>
         <span>Slow progress is still progress.</span>
       </footer>
     </main>
@@ -477,12 +492,12 @@ function SettingsDialog({ installAvailable, onInstall, onToggleNotifications, on
         <DialogTitle>Keep things gentle.</DialogTitle>
         <DialogDescription>Choose how Pomodoro lets you know a session is complete.</DialogDescription>
         <div className="settings-list">
-          <button className="settings-row" onClick={onToggleSound}>
+          <button aria-pressed={preferences.sound} className="settings-row" onClick={onToggleSound}>
             <span className="settings-icon">{preferences.sound ? <Volume2 aria-hidden="true" size={18} /> : <VolumeX aria-hidden="true" size={18} />}</span>
             <span><strong>Sound</strong><small>A soft chime when time is up</small></span>
             <span className="switch" data-checked={preferences.sound}><i /></span>
           </button>
-          <button className="settings-row" onClick={onToggleNotifications}>
+          <button aria-pressed={preferences.notifications} className="settings-row" onClick={onToggleNotifications}>
             <span className="settings-icon">{preferences.notifications ? <Bell aria-hidden="true" size={18} /> : <BellOff aria-hidden="true" size={18} />}</span>
             <span><strong>Desktop alerts</strong><small>Helpful when this tab is hidden</small></span>
             <span className="switch" data-checked={preferences.notifications}><i /></span>
