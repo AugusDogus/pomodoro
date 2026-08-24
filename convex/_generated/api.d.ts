@@ -10,7 +10,9 @@
 
 import type * as appState from "../appState.js";
 import type * as auth from "../auth.js";
+import type * as documentId from "../documentId.js";
 import type * as http from "../http.js";
+import type * as sync from "../sync.js";
 import type * as users from "../users.js";
 
 import type {
@@ -22,7 +24,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   appState: typeof appState;
   auth: typeof auth;
+  documentId: typeof documentId;
   http: typeof http;
+  sync: typeof sync;
   users: typeof users;
 }>;
 

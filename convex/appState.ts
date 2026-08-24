@@ -41,6 +41,10 @@ export const save = mutation({
     if (userId === null) {
       throw new Error("Sign in before saving.");
     }
+    const user = await ctx.db.get(userId);
+    if (user !== null && typeof user.appDocumentId === "string" && user.appDocumentId.length > 0) {
+      return;
+    }
 
     const existing = await ctx.db
       .query("appStates")

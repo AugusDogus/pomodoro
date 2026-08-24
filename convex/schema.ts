@@ -19,7 +19,10 @@ export default defineSchema({
     phone: v.optional(v.string()),
     phoneVerificationTime: v.optional(v.number()),
     isAnonymous: v.optional(v.boolean()),
-  }).index("email", ["email"]),
+    appDocumentId: v.optional(v.string()),
+  })
+    .index("email", ["email"])
+    .index("appDocumentId", ["appDocumentId"]),
   appStates: defineTable({
     userId: v.id("users"),
     tasks: v.array(task),
@@ -33,4 +36,16 @@ export default defineSchema({
     breakMinutes: v.number(),
     updatedAt: v.number(),
   }).index("by_user", ["userId"]),
+  automerge: defineTable({
+    documentId: v.string(),
+    type: v.union(v.literal("incremental"), v.literal("snapshot")),
+    hash: v.string(),
+    data: v.bytes(),
+  })
+    .index("doc_type_hash", ["documentId", "type", "hash"])
+    .index("documentId", ["documentId"]),
+  automergeClaims: defineTable({
+    documentId: v.string(),
+    userId: v.id("users"),
+  }).index("by_document", ["documentId"]),
 });

@@ -2,10 +2,18 @@ import react from "@astrojs/react";
 import vercel from "@astrojs/vercel";
 import AstroPWA from "@vite-pwa/astro";
 import { defineConfig } from "astro/config";
+import topLevelAwait from "vite-plugin-top-level-await";
+import wasm from "vite-plugin-wasm";
 
 export default defineConfig({
   output: "server",
   adapter: vercel(),
+  vite: {
+    plugins: [wasm(), topLevelAwait()],
+    optimizeDeps: {
+      exclude: ["@automerge/automerge", "@automerge/automerge-wasm"],
+    },
+  },
   integrations: [
     react(),
     AstroPWA({
@@ -41,7 +49,7 @@ export default defineConfig({
       workbox: {
         navigateFallback: "/",
         navigateFallbackDenylist: [/^\/api\//],
-        globPatterns: ["**/*.{css,js,html,svg,png,woff2}"]
+        globPatterns: ["**/*.{css,js,html,svg,png,woff2,wasm}"]
       }
     })
   ]
