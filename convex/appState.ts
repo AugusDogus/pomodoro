@@ -65,6 +65,9 @@ export const save = mutation({
       await ctx.db.insert("appStates", document);
       return;
     }
+    if (existing.updatedAt > args.state.updatedAt) {
+      return;
+    }
     await ctx.db.replace(existing._id, document);
   },
 });

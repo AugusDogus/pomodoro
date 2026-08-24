@@ -216,19 +216,16 @@ export default function FocusApp() {
         return;
       }
     }
-    const handle = window.setTimeout(() => {
-      void saveRemoteState({ state: remoteStateFromStored(storedState) })
-        .then(() => {
-          setSyncStatus({ kind: "synced" });
-        })
-        .catch(() => {
-          setSyncStatus({
-            kind: "error",
-            message: "Cloud save failed. Changes are still on this device.",
-          });
+    void saveRemoteState({ state: remoteStateFromStored(storedState) })
+      .then(() => {
+        setSyncStatus({ kind: "synced" });
+      })
+      .catch(() => {
+        setSyncStatus({
+          kind: "error",
+          message: "Cloud save failed. Changes are still on this device.",
         });
-    }, 400);
-    return () => window.clearTimeout(handle);
+      });
   }, [isAuthenticated, isOnline, remoteState, saveRemoteState, storedState]);
 
   useEffect(() => {
