@@ -1,6 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { defaultState, mergeAppState, parseAppState, type StoredAppState } from "../lib/app-state";
-import { db, syncWithTurso } from "./index";
+import { db } from "./index";
 import { preference, task } from "./schema";
 
 export async function loadUserState(userId: string): Promise<StoredAppState | null> {
@@ -39,7 +39,6 @@ export async function saveUserState(userId: string, state: StoredAppState): Prom
         set: toPreferenceRow(userId, state),
       });
   });
-  await syncWithTurso();
 }
 
 export async function transferGuestState(fromUserId: string, toUserId: string): Promise<void> {
