@@ -36,7 +36,7 @@ export function createSessionLogEntry(input: {
   };
 }
 
-export function isSessionTask(value: unknown): value is SessionTask {
+function isSessionTask(value: unknown): value is SessionTask {
   return isPlainRecord(value) && typeof value.id === "string" && typeof value.title === "string";
 }
 
@@ -114,6 +114,26 @@ export function sessionTimeLabel(completedAt: number): string {
 
 export function pomodoroCountLabel(count: number): string {
   return count === 1 ? "1 pomodoro" : `${count} pomodoros`;
+}
+
+export function todayPomodoroLabel(count: number): string {
+  return count === 0 ? "No pomodoros yet today" : `${pomodoroCountLabel(count)} today`;
+}
+
+export function todaysPomodoroCount(input: {
+  sessionLog: SessionLogEntry[];
+  completedSessions: number;
+  sessionDate: string;
+  today: string;
+}): number {
+  if (input.sessionLog.length > 0) return sessionsOnDate(input.sessionLog, input.today).length;
+  return input.sessionDate === input.today ? input.completedSessions : 0;
+}
+
+export function msUntilNextLocalMidnight(now = Date.now()): number {
+  const date = new Date(now);
+  const next = new Date(date.getFullYear(), date.getMonth(), date.getDate() + 1);
+  return Math.max(1, next.getTime() - now);
 }
 
 function sameSessionLogEntry(left: SessionLogEntry, right: SessionLogEntry): boolean {

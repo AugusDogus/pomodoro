@@ -35,7 +35,7 @@ import {
   type StoredAppState,
   type Task,
 } from "../lib/app-state";
-import { pomodoroCountLabel, sessionsOnDate } from "../lib/session-log";
+import { msUntilNextLocalMidnight, todayPomodoroLabel, todaysPomodoroCount } from "../lib/session-log";
 import {
   clearSyncHint,
   STORAGE_KEY,
@@ -152,8 +152,13 @@ export default function FocusApp() {
     () => storedState.tasks.find((task) => task.id === storedState.selectedTaskId) ?? null,
     [storedState.selectedTaskId, storedState.tasks],
   );
-  const todayKey = localDateKey();
-  const todayCount = sessionsOnDate(storedState.sessionLog, todayKey).length;
+  const todayKey = useTodayKey();
+  const todayCount = todaysPomodoroCount({
+    sessionLog: storedState.sessionLog,
+    completedSessions: storedState.completedSessions,
+    sessionDate: storedState.sessionDate,
+    today: todayKey,
+  });
   const completedTasks = storedState.tasks.filter((task) => task.completed).length;
   const taskProgress = storedState.tasks.length === 0 ? 0 : completedTasks / storedState.tasks.length;
   const totalSeconds = durationSeconds(storedState.preferences, mode);
@@ -439,7 +444,7 @@ export default function FocusApp() {
       <section className="page-intro">
         <div>
           <h1>{getGreeting(account === null ? null : firstName(account.name))}</h1>
-          <p>{todayCount === 0 ? "No pomodoros yet today." : `${pomodoroCountLabel(todayCount)} today.`}</p>
+          <p>{todayPomodoroLabel(todayCount)}.</p>
         </div>
       </section>
 
@@ -471,9 +476,7 @@ export default function FocusApp() {
             <div className="timer-content">
               <strong>{formatTime(remaining)}</strong>
               <span className="timer-task">{selectedTask?.title ?? "Choose a task for this session"}</span>
-              <span className="timer-sessions">
-                {todayCount === 0 ? "No sessions yet today" : `${pomodoroCountLabel(todayCount)} today`}
-              </span>
+              <span className="timer-sessions">{todayPomodoroLabel(todayCount)}</span>
             </div>
           </div>
 
@@ -542,7 +545,12 @@ export default function FocusApp() {
           </form>
         </section>
 
-        <SessionLog entries={storedState.sessionLog} mobileActive={mobileView === "log"} today={todayKey} />
+        <SessionLog
+          entries={storedState.sessionLog}
+          mobileActive={mobileView === "log"}
+          today={todayKey}
+          todayCount={todayCount}
+        />
       </div>
 
       <nav aria-label="Main navigation" className="mobile-tabs" role="tablist">
@@ -771,6 +779,25 @@ type DurationRowProps = {
   minutes: number;
   onChange: (delta: number) => void;
 };
+
+function useTodayKey(): string {
+  const [today, setToday] = useState(localDateKey);
+  useEffect(() => {
+    const refresh = () => {
+      const next = localDateKey();
+      setToday((current) => (current === next ? current : next));
+    };
+    const timeout = window.setTimeout(refresh, msUntilNextLocalMidnight());
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.clearTimeout(timeout);
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [today]);
+  return today;
+}
 
 function DurationRow({ disabled, label, maximum, minutes, onChange }: DurationRowProps) {
   return (

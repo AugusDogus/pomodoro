@@ -1,13 +1,15 @@
+import * as A from "@automerge/automerge/next";
 import {
   defaultState,
   isTask,
   parseDuration,
+  sessionEntryFromFocus,
   type StoredAppState,
   type Task,
   MAX_BREAK_MINUTES,
   MAX_FOCUS_MINUTES,
 } from "./app-state";
-import { parseSessionLog, type SessionLogEntry } from "./session-log";
+import { createSessionLogEntry, mergeSessionLog, parseSessionLog, type SessionLogEntry } from "./session-log";
 import { TIMER_SECONDS } from "./timer";
 
 export type AppDoc = {
@@ -81,7 +83,14 @@ export function appDocFromState(state: StoredAppState): AppDoc {
     selectedTaskId: state.selectedTaskId,
     completedSessions: state.completedSessions,
     sessionDate: state.sessionDate,
-    sessionLog: state.sessionLog.map(copySession),
+    sessionLog: state.sessionLog.map((entry) =>
+      createSessionLogEntry({
+        id: entry.id,
+        completedAt: entry.completedAt,
+        minutes: entry.minutes,
+        task: entry.task,
+      }),
+    ),
     sound: state.preferences.sound,
     notifications: state.preferences.notifications,
     autoStartBreaks: state.preferences.autoStartBreaks,
@@ -97,7 +106,7 @@ export function stateFromAppDoc(doc: AppDoc): StoredAppState {
     selectedTaskId: tasks.some((task) => task.id === doc.selectedTaskId) ? doc.selectedTaskId : null,
     completedSessions: typeof doc.completedSessions === "number" ? doc.completedSessions : 0,
     sessionDate: typeof doc.sessionDate === "string" ? doc.sessionDate : defaultState().sessionDate,
-    sessionLog: parseSessionLog(doc.sessionLog),
+    sessionLog: readSessionLog(doc),
     preferences: {
       sound: doc.sound === true,
       notifications: doc.notifications === true,
@@ -133,6 +142,7 @@ export function applyStateToAppDoc(doc: AppDoc, next: StoredAppState): void {
     if (current.pomodoros !== task.pomodoros) current.pomodoros = task.pomodoros;
   }
 
+  healSessionLogConflicts(doc);
   addMissingSessionsToAppDoc(doc, next);
 
   if (doc.selectedTaskId !== next.selectedTaskId) doc.selectedTaskId = next.selectedTaskId;
@@ -160,10 +170,9 @@ export function addMissingTasksToAppDoc(doc: AppDoc, incoming: StoredAppState): 
 }
 
 export function addMissingSessionsToAppDoc(doc: AppDoc, incoming: StoredAppState): void {
-  ensureSessionLog(doc);
+  healSessionLogConflicts(doc);
   for (const entry of incoming.sessionLog) {
-    if (doc.sessionLog.some((item) => item.id === entry.id)) continue;
-    doc.sessionLog.push(copySession(entry));
+    appendSessionIfMissing(doc, entry);
   }
 }
 
@@ -194,7 +203,14 @@ export function accumulateDirty(dirty: AppDocDirty, prev: StoredAppState, next: 
   for (const entry of next.sessionLog) {
     if (prev.sessionLog.some((item) => item.id === entry.id)) continue;
     if (dirty.addedSessions.some((item) => item.id === entry.id)) continue;
-    dirty.addedSessions.push(copySession(entry));
+    dirty.addedSessions.push(
+      createSessionLogEntry({
+        id: entry.id,
+        completedAt: entry.completedAt,
+        minutes: entry.minutes,
+        task: entry.task,
+      }),
+    );
   }
 
   if (prev.selectedTaskId !== next.selectedTaskId) dirty.selectedTaskId = next.selectedTaskId;
@@ -241,10 +257,9 @@ export function applyDirtyToAppDoc(doc: AppDoc, dirty: AppDocDirty): void {
     const current = doc.tasks.find((task) => task.id === id);
     if (current !== undefined && delta !== 0) current.pomodoros += delta;
   }
-  ensureSessionLog(doc);
+  healSessionLogConflicts(doc);
   for (const entry of dirty.addedSessions) {
-    if (doc.sessionLog.some((item) => item.id === entry.id)) continue;
-    doc.sessionLog.push(copySession(entry));
+    appendSessionIfMissing(doc, entry);
   }
   if (dirty.sessionDelta !== 0) doc.completedSessions += dirty.sessionDelta;
   if (dirty.sessionDate !== undefined) doc.sessionDate = dirty.sessionDate;
@@ -256,32 +271,60 @@ export function applyDirtyToAppDoc(doc: AppDoc, dirty: AppDocDirty): void {
   if (dirty.breakMinutes !== undefined) doc.breakMinutes = dirty.breakMinutes;
 }
 
-export function completeFocusSession(doc: AppDoc, entry: SessionLogEntry): void {
-  if (doc.sessionDate === entry.dateKey) doc.completedSessions += 1;
-  else {
-    doc.sessionDate = entry.dateKey;
-    doc.completedSessions = 1;
-  }
-  ensureSessionLog(doc);
-  if (!doc.sessionLog.some((item) => item.id === entry.id)) {
-    doc.sessionLog.push(copySession(entry));
-  }
+export function completeFocusSession(doc: AppDoc, input: { id: string; completedAt: number }): void {
+  healSessionLogConflicts(doc);
+  if (sessionLogHasId(doc, input.id)) return;
+
+  const entry = sessionEntryFromFocus(
+    {
+      selectedTaskId: doc.selectedTaskId,
+      tasks: doc.tasks,
+      focusMinutes: parseDuration(doc.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES),
+    },
+    input,
+  );
+  if (!appendSessionIfMissing(doc, entry)) return;
   if (entry.task === null) return;
   const taskId = entry.task.id;
   const task = doc.tasks.find((item) => item.id === taskId);
   if (task !== undefined) task.pomodoros += 1;
 }
 
-function ensureSessionLog(doc: AppDoc): void {
-  if (!Array.isArray(doc.sessionLog)) doc.sessionLog = [];
+export function healSessionLogConflicts(doc: AppDoc): void {
+  for (const entry of conflictingSessionLogs(doc)) {
+    appendSessionIfMissing(doc, entry);
+  }
 }
 
-function copySession(entry: SessionLogEntry): SessionLogEntry {
-  return {
-    id: entry.id,
-    completedAt: entry.completedAt,
-    dateKey: entry.dateKey,
-    minutes: entry.minutes,
-    task: entry.task === null ? null : { id: entry.task.id, title: entry.task.title },
-  };
+function readSessionLog(doc: AppDoc): SessionLogEntry[] {
+  return mergeSessionLog(parseSessionLog(doc.sessionLog), conflictingSessionLogs(doc));
+}
+
+function appendSessionIfMissing(doc: AppDoc, entry: SessionLogEntry): boolean {
+  if (!Array.isArray(doc.sessionLog)) doc.sessionLog = [];
+  if (sessionLogHasId(doc, entry.id)) return false;
+  doc.sessionLog.push(
+    createSessionLogEntry({
+      id: entry.id,
+      completedAt: entry.completedAt,
+      minutes: entry.minutes,
+      task: entry.task,
+    }),
+  );
+  return true;
+}
+
+function sessionLogHasId(doc: AppDoc, id: string): boolean {
+  return Array.isArray(doc.sessionLog) && doc.sessionLog.some((item) => item.id === id);
+}
+
+function conflictingSessionLogs(doc: AppDoc): SessionLogEntry[] {
+  if (!A.isAutomerge(doc)) return [];
+  const conflicts = A.getConflicts(doc, "sessionLog");
+  if (conflicts === undefined) return [];
+  const entries: SessionLogEntry[] = [];
+  for (const value of Object.values(conflicts)) {
+    for (const entry of parseSessionLog(value)) entries.push(entry);
+  }
+  return entries;
 }

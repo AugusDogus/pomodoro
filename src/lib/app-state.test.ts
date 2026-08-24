@@ -51,6 +51,23 @@ describe("app state", () => {
     expect(state.sessionLog).toEqual([entry]);
   });
 
+  test("derives today's count from the log and ignores a stale counter", () => {
+    const entry = createSessionLogEntry({
+      id: "s1",
+      completedAt: Date.now(),
+      minutes: 25,
+      task: null,
+    });
+    const state = parseAppState({
+      ...defaultState(),
+      completedSessions: 9,
+      sessionDate: defaultState().sessionDate,
+      sessionLog: [entry],
+    });
+
+    expect(state.completedSessions).toBe(1);
+  });
+
   test("falls back when stored JSON is invalid", () => {
     expect(parseStoredState("not-json")).toEqual(defaultState());
     expect(parseAppState({ tasks: "nope" })).toEqual(defaultState());
@@ -183,7 +200,7 @@ describe("app state", () => {
 
     const next = nextStateAfterFocusSession(prev, { id: "s1", completedAt });
 
-    expect(next.completedSessions).toBe(2);
+    expect(next.completedSessions).toBe(1);
     expect(next.tasks[0]?.pomodoros).toBe(3);
     expect(next.sessionLog).toEqual([
       createSessionLogEntry({

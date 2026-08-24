@@ -99,12 +99,7 @@ describe("app doc", () => {
   });
 
   test("completeFocusSession increments the selected task and appends a log entry", () => {
-    const entry = createSessionLogEntry({
-      id: "s1",
-      completedAt: Date.parse("2026-08-24T11:00:00"),
-      minutes: 25,
-      task: { id: "t1", title: "Read" },
-    });
+    const completedAt = Date.parse("2026-08-24T11:00:00");
     const doc = appDocFromState({
       ...defaultState(),
       selectedTaskId: "t1",
@@ -113,11 +108,33 @@ describe("app doc", () => {
       tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 1 }],
     });
 
-    completeFocusSession(doc, entry);
+    completeFocusSession(doc, { id: "s1", completedAt });
 
-    expect(doc.completedSessions).toBe(3);
+    expect(doc.completedSessions).toBe(2);
     expect(doc.tasks[0]?.pomodoros).toBe(2);
-    expect(doc.sessionLog).toEqual([entry]);
+    expect(doc.sessionLog).toEqual([
+      createSessionLogEntry({
+        id: "s1",
+        completedAt,
+        minutes: 25,
+        task: { id: "t1", title: "Read" },
+      }),
+    ]);
+  });
+
+  test("completeFocusSession is a no-op when the entry id already exists", () => {
+    const completedAt = Date.parse("2026-08-24T11:00:00");
+    const doc = appDocFromState({
+      ...defaultState(),
+      selectedTaskId: "t1",
+      tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 1 }],
+    });
+
+    completeFocusSession(doc, { id: "s1", completedAt });
+    completeFocusSession(doc, { id: "s1", completedAt });
+
+    expect(doc.tasks[0]?.pomodoros).toBe(2);
+    expect(doc.sessionLog).toHaveLength(1);
   });
 
   test("applyDirtyToAppDoc appends new session log entries", () => {

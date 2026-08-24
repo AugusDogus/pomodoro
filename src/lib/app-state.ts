@@ -4,6 +4,7 @@ import {
   mergeSessionLog,
   parseSessionLog,
   sameSessionLog,
+  todaysPomodoroCount,
   type SessionLogEntry,
 } from "./session-log";
 import { TIMER_SECONDS, type TimerMode } from "./timer";
@@ -106,13 +107,19 @@ export function parseAppState(value: unknown): StoredAppState {
 
   const today = localDateKey();
   const storedDate = typeof value.sessionDate === "string" ? value.sessionDate : today;
+  const sessionLog = parseSessionLog(value.sessionLog);
 
   return {
     tasks: value.tasks,
     selectedTaskId: value.selectedTaskId,
-    completedSessions: storedDate === today ? value.completedSessions : 0,
+    completedSessions: todaysPomodoroCount({
+      sessionLog,
+      completedSessions: value.completedSessions,
+      sessionDate: storedDate,
+      today,
+    }),
     sessionDate: today,
-    sessionLog: parseSessionLog(value.sessionLog),
+    sessionLog,
     preferences: {
       sound: value.preferences.sound,
       notifications: value.preferences.notifications,
@@ -207,12 +214,19 @@ export function mergeAppState(left: StoredAppState, right: StoredAppState): Stor
     preferred: newer.selectedTaskId,
     fallbacks: [left.selectedTaskId, right.selectedTaskId],
   });
+  const today = localDateKey();
+  const sessionLog = mergeSessionLog(left.sessionLog, right.sessionLog);
   const merged: StoredAppState = {
     tasks,
     selectedTaskId,
-    completedSessions: Math.max(left.completedSessions, right.completedSessions),
-    sessionDate: localDateKey(),
-    sessionLog: mergeSessionLog(left.sessionLog, right.sessionLog),
+    completedSessions: todaysPomodoroCount({
+      sessionLog,
+      completedSessions: Math.max(left.completedSessions, right.completedSessions),
+      sessionDate: today,
+      today,
+    }),
+    sessionDate: today,
+    sessionLog,
     preferences: newer.preferences,
     updatedAt: Math.max(left.updatedAt, right.updatedAt),
   };
@@ -233,27 +247,43 @@ function pickSelectedTaskId(input: {
   return null;
 }
 
+export function sessionEntryFromFocus(
+  source: {
+    selectedTaskId: string | null;
+    tasks: ReadonlyArray<{ id: string; title: string }>;
+    focusMinutes: number;
+  },
+  input: { id: string; completedAt: number },
+): SessionLogEntry {
+  const selected = source.tasks.find((task) => task.id === source.selectedTaskId) ?? null;
+  return createSessionLogEntry({
+    id: input.id,
+    completedAt: input.completedAt,
+    minutes: source.focusMinutes,
+    task: selected === null ? null : { id: selected.id, title: selected.title },
+  });
+}
+
 export function nextStateAfterFocusSession(
   prev: StoredAppState,
   input: { id: string; completedAt: number },
 ): StoredAppState {
   if (prev.sessionLog.some((entry) => entry.id === input.id)) return prev;
 
-  const selected = prev.tasks.find((task) => task.id === prev.selectedTaskId) ?? null;
-  const entry = createSessionLogEntry({
-    id: input.id,
-    completedAt: input.completedAt,
-    minutes: prev.preferences.focusMinutes,
-    task: selected === null ? null : { id: selected.id, title: selected.title },
-  });
-
+  const entry = sessionEntryFromFocus(
+    {
+      selectedTaskId: prev.selectedTaskId,
+      tasks: prev.tasks,
+      focusMinutes: prev.preferences.focusMinutes,
+    },
+    input,
+  );
   return {
     ...prev,
-    completedSessions: prev.sessionDate === entry.dateKey ? prev.completedSessions + 1 : 1,
     sessionDate: entry.dateKey,
     sessionLog: [...prev.sessionLog, entry],
     tasks: prev.tasks.map((task) =>
-      selected !== null && task.id === selected.id ? { ...task, pomodoros: task.pomodoros + 1 } : task,
+      entry.task !== null && task.id === entry.task.id ? { ...task, pomodoros: task.pomodoros + 1 } : task,
     ),
   };
 }

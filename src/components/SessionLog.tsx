@@ -3,7 +3,6 @@ import {
   pomodoroCountLabel,
   sessionDayLabel,
   sessionTimeLabel,
-  sessionsOnDate,
   type SessionLogEntry,
 } from "../lib/session-log";
 
@@ -11,11 +10,11 @@ type SessionLogProps = {
   entries: SessionLogEntry[];
   mobileActive: boolean;
   today: string;
+  todayCount: number;
 };
 
-export function SessionLog({ entries, mobileActive, today }: SessionLogProps) {
+export function SessionLog({ entries, mobileActive, today, todayCount }: SessionLogProps) {
   const groups = groupSessionLog(entries);
-  const todayCount = sessionsOnDate(entries, today).length;
 
   return (
     <section

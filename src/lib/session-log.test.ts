@@ -2,10 +2,13 @@ import { describe, expect, test } from "bun:test";
 import {
   createSessionLogEntry,
   groupSessionLog,
+  msUntilNextLocalMidnight,
   parseSessionLog,
   pomodoroCountLabel,
   sessionDayLabel,
   sessionsOnDate,
+  todayPomodoroLabel,
+  todaysPomodoroCount,
 } from "./session-log";
 
 describe("session log", () => {
@@ -76,5 +79,58 @@ describe("session log", () => {
     expect(pomodoroCountLabel(1)).toBe("1 pomodoro");
     expect(pomodoroCountLabel(0)).toBe("0 pomodoros");
     expect(pomodoroCountLabel(3)).toBe("3 pomodoros");
+  });
+
+  test("todayPomodoroLabel uses one phrase for empty and counted days", () => {
+    expect(todayPomodoroLabel(0)).toBe("No pomodoros yet today");
+    expect(todayPomodoroLabel(1)).toBe("1 pomodoro today");
+    expect(todayPomodoroLabel(3)).toBe("3 pomodoros today");
+  });
+
+  test("todaysPomodoroCount prefers the log and falls back to the old daily counter", () => {
+    const today = createSessionLogEntry({
+      id: "today",
+      completedAt: Date.parse("2026-08-24T10:00:00"),
+      minutes: 25,
+      task: null,
+    });
+    const yesterday = createSessionLogEntry({
+      id: "yesterday",
+      completedAt: Date.parse("2026-08-23T10:00:00"),
+      minutes: 25,
+      task: null,
+    });
+
+    expect(
+      todaysPomodoroCount({
+        sessionLog: [today, yesterday],
+        completedSessions: 9,
+        sessionDate: "2026-08-24",
+        today: today.dateKey,
+      }),
+    ).toBe(1);
+    expect(
+      todaysPomodoroCount({
+        sessionLog: [],
+        completedSessions: 4,
+        sessionDate: "2026-08-24",
+        today: "2026-08-24",
+      }),
+    ).toBe(4);
+    expect(
+      todaysPomodoroCount({
+        sessionLog: [],
+        completedSessions: 4,
+        sessionDate: "2026-08-23",
+        today: "2026-08-24",
+      }),
+    ).toBe(0);
+  });
+
+  test("msUntilNextLocalMidnight is the remaining time before the next local day", () => {
+    const morning = Date.parse("2026-08-24T00:00:00");
+    expect(msUntilNextLocalMidnight(morning)).toBe(24 * 60 * 60 * 1000);
+    expect(msUntilNextLocalMidnight(morning + 1000)).toBe(24 * 60 * 60 * 1000 - 1000);
+    expect(msUntilNextLocalMidnight(morning)).toBeGreaterThan(0);
   });
 });
