@@ -10,6 +10,7 @@ import {
   stateFromAppDoc,
 } from "./app-doc";
 import { defaultState } from "./app-state";
+import { createSessionLogEntry } from "./session-log";
 
 describe("app doc", () => {
   test("round-trips a stored snapshot without a clock", () => {
@@ -97,7 +98,13 @@ describe("app doc", () => {
     ]);
   });
 
-  test("completeFocusSession increments the selected task", () => {
+  test("completeFocusSession increments the selected task and appends a log entry", () => {
+    const entry = createSessionLogEntry({
+      id: "s1",
+      completedAt: Date.parse("2026-08-24T11:00:00"),
+      minutes: 25,
+      task: { id: "t1", title: "Read" },
+    });
     const doc = appDocFromState({
       ...defaultState(),
       selectedTaskId: "t1",
@@ -106,9 +113,36 @@ describe("app doc", () => {
       tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 1 }],
     });
 
-    completeFocusSession(doc, "2026-08-24");
+    completeFocusSession(doc, entry);
 
     expect(doc.completedSessions).toBe(3);
     expect(doc.tasks[0]?.pomodoros).toBe(2);
+    expect(doc.sessionLog).toEqual([entry]);
+  });
+
+  test("applyDirtyToAppDoc appends new session log entries", () => {
+    const existing = createSessionLogEntry({
+      id: "old",
+      completedAt: Date.parse("2026-08-24T09:00:00"),
+      minutes: 25,
+      task: null,
+    });
+    const added = createSessionLogEntry({
+      id: "new",
+      completedAt: Date.parse("2026-08-24T11:00:00"),
+      minutes: 25,
+      task: { id: "t1", title: "Read" },
+    });
+    const doc = appDocFromState({
+      ...defaultState(),
+      sessionLog: [existing],
+    });
+    const prev = stateFromAppDoc(doc);
+    const next = { ...prev, sessionLog: [...prev.sessionLog, added] };
+    const dirty = emptyDirty();
+    accumulateDirty(dirty, prev, next);
+    applyDirtyToAppDoc(doc, dirty);
+
+    expect(doc.sessionLog).toEqual([existing, added]);
   });
 });

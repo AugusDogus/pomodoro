@@ -4,6 +4,7 @@ import {
   Check,
   Cloud,
   CloudOff,
+  History,
   ListTodo,
   LogIn,
   LogOut,
@@ -26,6 +27,7 @@ import { api } from "../../convex/_generated/api";
 import {
   durationSeconds,
   firstName,
+  localDateKey,
   MAX_BREAK_MINUTES,
   MAX_FOCUS_MINUTES,
   parseStoredState,
@@ -33,6 +35,7 @@ import {
   type StoredAppState,
   type Task,
 } from "../lib/app-state";
+import { pomodoroCountLabel, sessionsOnDate } from "../lib/session-log";
 import {
   clearSyncHint,
   STORAGE_KEY,
@@ -58,13 +61,14 @@ import {
   type SessionUser,
 } from "../lib/session-user";
 import { formatTime, progressFor, remainingFromEnd, type TimerMode } from "../lib/timer";
+import { SessionLog } from "./SessionLog";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerTitle, DrawerTrigger } from "./ui/drawer";
 
 type TimerStatus = "idle" | "running" | "paused";
-type MobileView = "timer" | "tasks";
+type MobileView = "timer" | "tasks" | "log";
 type AlertIssue = Exclude<NotificationPermissionResult, { status: "granted" }>;
 
 type InstallPromptEvent = Event & {
@@ -148,6 +152,8 @@ export default function FocusApp() {
     () => storedState.tasks.find((task) => task.id === storedState.selectedTaskId) ?? null,
     [storedState.selectedTaskId, storedState.tasks],
   );
+  const todayKey = localDateKey();
+  const todayCount = sessionsOnDate(storedState.sessionLog, todayKey).length;
   const completedTasks = storedState.tasks.filter((task) => task.completed).length;
   const taskProgress = storedState.tasks.length === 0 ? 0 : completedTasks / storedState.tasks.length;
   const totalSeconds = durationSeconds(storedState.preferences, mode);
@@ -433,6 +439,7 @@ export default function FocusApp() {
       <section className="page-intro">
         <div>
           <h1>{getGreeting(account === null ? null : firstName(account.name))}</h1>
+          <p>{todayCount === 0 ? "No pomodoros yet today." : `${pomodoroCountLabel(todayCount)} today.`}</p>
         </div>
       </section>
 
@@ -464,6 +471,9 @@ export default function FocusApp() {
             <div className="timer-content">
               <strong>{formatTime(remaining)}</strong>
               <span className="timer-task">{selectedTask?.title ?? "Choose a task for this session"}</span>
+              <span className="timer-sessions">
+                {todayCount === 0 ? "No sessions yet today" : `${pomodoroCountLabel(todayCount)} today`}
+              </span>
             </div>
           </div>
 
@@ -531,6 +541,8 @@ export default function FocusApp() {
             <Button disabled={taskTitle.trim().length === 0} size="small" type="submit">Add</Button>
           </form>
         </section>
+
+        <SessionLog entries={storedState.sessionLog} mobileActive={mobileView === "log"} today={todayKey} />
       </div>
 
       <nav aria-label="Main navigation" className="mobile-tabs" role="tablist">
@@ -553,6 +565,16 @@ export default function FocusApp() {
         >
           <ListTodo aria-hidden="true" size={19} />
           Tasks
+        </button>
+        <button
+          aria-controls="log-panel"
+          aria-selected={mobileView === "log"}
+          id="mobile-log-tab"
+          onClick={() => setMobileView("log")}
+          role="tab"
+        >
+          <History aria-hidden="true" size={19} />
+          Log
         </button>
       </nav>
 

@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "../../convex/_generated/api";
 import {
   accumulateDirty,
+  addMissingSessionsToAppDoc,
   addMissingTasksToAppDoc,
   applyDirtyToAppDoc,
   applyStateToAppDoc,
@@ -23,7 +24,8 @@ import {
   type AppDocDirty,
 } from "./app-doc";
 import { readCachedDocumentId, writeCachedDocumentId } from "./app-document-id";
-import { localDateKey, mergeAppState, sameSnapshot, type StoredAppState } from "./app-state";
+import { mergeAppState, nextStateAfterFocusSession, sameSnapshot, type StoredAppState } from "./app-state";
+import { createSessionLogEntry } from "./session-log";
 import { storedStateFromRemote, type RemoteAppState, type SyncStatus } from "./app-sync";
 import { startDocumentSync, type PushStatus } from "./automerge-sync";
 import { convex } from "./convex";
@@ -121,6 +123,7 @@ export function useAppDocument(input: {
     const incoming = latestRef.current;
     changeDoc((current) => {
       addMissingTasksToAppDoc(current, incoming);
+      addMissingSessionsToAppDoc(current, incoming);
     });
   }, [changeDoc, doc, documentId, draft, url]);
 
@@ -153,25 +156,29 @@ export function useAppDocument(input: {
   );
 
   const finishFocusSession = useCallback(() => {
-    const today = localDateKey();
+    const entryId = crypto.randomUUID();
+    const completedAt = Date.now();
     if (url === null || doc === undefined) {
       setDraft((current) => {
         const prev = current ?? latestRef.current;
-        const nextState = {
-          ...prev,
-          completedSessions: prev.sessionDate === today ? prev.completedSessions + 1 : 1,
-          sessionDate: today,
-          tasks: prev.tasks.map((task) =>
-            task.id === prev.selectedTaskId ? { ...task, pomodoros: task.pomodoros + 1 } : task,
-          ),
-        };
+        const nextState = nextStateAfterFocusSession(prev, { id: entryId, completedAt });
         accumulateDirty(dirtyRef.current, prev, nextState);
         return nextState;
       });
       return;
     }
     changeDoc((current) => {
-      completeFocusSession(current, today);
+      const prev = stateFromAppDoc(current);
+      const selected = prev.tasks.find((task) => task.id === prev.selectedTaskId) ?? null;
+      completeFocusSession(
+        current,
+        createSessionLogEntry({
+          id: entryId,
+          completedAt,
+          minutes: prev.preferences.focusMinutes,
+          task: selected === null ? null : { id: selected.id, title: selected.title },
+        }),
+      );
     });
   }, [changeDoc, doc, url]);
 

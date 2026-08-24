@@ -7,6 +7,7 @@ import {
   MAX_BREAK_MINUTES,
   MAX_FOCUS_MINUTES,
 } from "./app-state";
+import { parseSessionLog, type SessionLogEntry } from "./session-log";
 import { TIMER_SECONDS } from "./timer";
 
 export type AppDoc = {
@@ -14,6 +15,7 @@ export type AppDoc = {
   selectedTaskId: string | null;
   completedSessions: number;
   sessionDate: string;
+  sessionLog: SessionLogEntry[];
   sound: boolean;
   notifications: boolean;
   autoStartBreaks: boolean;
@@ -26,6 +28,7 @@ export type AppDocDirty = {
   removed: string[];
   tasks: Map<string, { title?: string; completed?: boolean }>;
   pomodoroDeltas: Map<string, number>;
+  addedSessions: SessionLogEntry[];
   sessionDelta: number;
   sessionDate: string | undefined;
   selectedTaskId: string | null | undefined;
@@ -42,6 +45,7 @@ export function emptyDirty(): AppDocDirty {
     removed: [],
     tasks: new Map(),
     pomodoroDeltas: new Map(),
+    addedSessions: [],
     sessionDelta: 0,
     sessionDate: undefined,
     selectedTaskId: undefined,
@@ -59,6 +63,7 @@ export function isDirty(dirty: AppDocDirty): boolean {
     dirty.removed.length > 0 ||
     dirty.tasks.size > 0 ||
     dirty.pomodoroDeltas.size > 0 ||
+    dirty.addedSessions.length > 0 ||
     dirty.sessionDelta !== 0 ||
     dirty.sessionDate !== undefined ||
     dirty.selectedTaskId !== undefined ||
@@ -76,6 +81,7 @@ export function appDocFromState(state: StoredAppState): AppDoc {
     selectedTaskId: state.selectedTaskId,
     completedSessions: state.completedSessions,
     sessionDate: state.sessionDate,
+    sessionLog: state.sessionLog.map(copySession),
     sound: state.preferences.sound,
     notifications: state.preferences.notifications,
     autoStartBreaks: state.preferences.autoStartBreaks,
@@ -91,6 +97,7 @@ export function stateFromAppDoc(doc: AppDoc): StoredAppState {
     selectedTaskId: tasks.some((task) => task.id === doc.selectedTaskId) ? doc.selectedTaskId : null,
     completedSessions: typeof doc.completedSessions === "number" ? doc.completedSessions : 0,
     sessionDate: typeof doc.sessionDate === "string" ? doc.sessionDate : defaultState().sessionDate,
+    sessionLog: parseSessionLog(doc.sessionLog),
     preferences: {
       sound: doc.sound === true,
       notifications: doc.notifications === true,
@@ -126,6 +133,8 @@ export function applyStateToAppDoc(doc: AppDoc, next: StoredAppState): void {
     if (current.pomodoros !== task.pomodoros) current.pomodoros = task.pomodoros;
   }
 
+  addMissingSessionsToAppDoc(doc, next);
+
   if (doc.selectedTaskId !== next.selectedTaskId) doc.selectedTaskId = next.selectedTaskId;
   if (doc.completedSessions !== next.completedSessions) doc.completedSessions = next.completedSessions;
   if (doc.sessionDate !== next.sessionDate) doc.sessionDate = next.sessionDate;
@@ -147,6 +156,14 @@ export function addMissingTasksToAppDoc(doc: AppDoc, incoming: StoredAppState): 
       completed: task.completed,
       pomodoros: task.pomodoros,
     });
+  }
+}
+
+export function addMissingSessionsToAppDoc(doc: AppDoc, incoming: StoredAppState): void {
+  ensureSessionLog(doc);
+  for (const entry of incoming.sessionLog) {
+    if (doc.sessionLog.some((item) => item.id === entry.id)) continue;
+    doc.sessionLog.push(copySession(entry));
   }
 }
 
@@ -172,6 +189,12 @@ export function accumulateDirty(dirty: AppDocDirty, prev: StoredAppState, next: 
   for (const task of prev.tasks) {
     if (nextIds.has(task.id) || dirty.removed.includes(task.id)) continue;
     dirty.removed.push(task.id);
+  }
+
+  for (const entry of next.sessionLog) {
+    if (prev.sessionLog.some((item) => item.id === entry.id)) continue;
+    if (dirty.addedSessions.some((item) => item.id === entry.id)) continue;
+    dirty.addedSessions.push(copySession(entry));
   }
 
   if (prev.selectedTaskId !== next.selectedTaskId) dirty.selectedTaskId = next.selectedTaskId;
@@ -218,6 +241,11 @@ export function applyDirtyToAppDoc(doc: AppDoc, dirty: AppDocDirty): void {
     const current = doc.tasks.find((task) => task.id === id);
     if (current !== undefined && delta !== 0) current.pomodoros += delta;
   }
+  ensureSessionLog(doc);
+  for (const entry of dirty.addedSessions) {
+    if (doc.sessionLog.some((item) => item.id === entry.id)) continue;
+    doc.sessionLog.push(copySession(entry));
+  }
   if (dirty.sessionDelta !== 0) doc.completedSessions += dirty.sessionDelta;
   if (dirty.sessionDate !== undefined) doc.sessionDate = dirty.sessionDate;
   if (dirty.selectedTaskId !== undefined) doc.selectedTaskId = dirty.selectedTaskId;
@@ -228,13 +256,32 @@ export function applyDirtyToAppDoc(doc: AppDoc, dirty: AppDocDirty): void {
   if (dirty.breakMinutes !== undefined) doc.breakMinutes = dirty.breakMinutes;
 }
 
-export function completeFocusSession(doc: AppDoc, today: string): void {
-  if (doc.sessionDate === today) doc.completedSessions += 1;
+export function completeFocusSession(doc: AppDoc, entry: SessionLogEntry): void {
+  if (doc.sessionDate === entry.dateKey) doc.completedSessions += 1;
   else {
-    doc.sessionDate = today;
+    doc.sessionDate = entry.dateKey;
     doc.completedSessions = 1;
   }
-  if (doc.selectedTaskId === null) return;
-  const task = doc.tasks.find((item) => item.id === doc.selectedTaskId);
+  ensureSessionLog(doc);
+  if (!doc.sessionLog.some((item) => item.id === entry.id)) {
+    doc.sessionLog.push(copySession(entry));
+  }
+  if (entry.task === null) return;
+  const taskId = entry.task.id;
+  const task = doc.tasks.find((item) => item.id === taskId);
   if (task !== undefined) task.pomodoros += 1;
+}
+
+function ensureSessionLog(doc: AppDoc): void {
+  if (!Array.isArray(doc.sessionLog)) doc.sessionLog = [];
+}
+
+function copySession(entry: SessionLogEntry): SessionLogEntry {
+  return {
+    id: entry.id,
+    completedAt: entry.completedAt,
+    dateKey: entry.dateKey,
+    minutes: entry.minutes,
+    task: entry.task === null ? null : { id: entry.task.id, title: entry.task.title },
+  };
 }

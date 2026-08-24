@@ -4,10 +4,12 @@ import {
   defaultState,
   firstName,
   mergeAppState,
+  nextStateAfterFocusSession,
   parseAppState,
   parseStoredState,
   touchState,
 } from "./app-state";
+import { createSessionLogEntry } from "./session-log";
 
 describe("app state", () => {
   test("parses a valid stored snapshot", () => {
@@ -29,8 +31,24 @@ describe("app state", () => {
     );
 
     expect(state.tasks).toEqual([{ id: "t1", title: "Read", completed: false, pomodoros: 2 }]);
+    expect(state.sessionLog).toEqual([]);
     expect(state.preferences.focusMinutes).toBe(30);
     expect(state.updatedAt).toBe(42);
+  });
+
+  test("keeps a valid session log and drops broken entries", () => {
+    const entry = createSessionLogEntry({
+      id: "s1",
+      completedAt: Date.parse("2026-08-24T15:04:00"),
+      minutes: 25,
+      task: { id: "t1", title: "Read" },
+    });
+    const state = parseAppState({
+      ...defaultState(),
+      sessionLog: [entry, { id: "bad" }, "nope"],
+    });
+
+    expect(state.sessionLog).toEqual([entry]);
   });
 
   test("falls back when stored JSON is invalid", () => {
@@ -132,5 +150,61 @@ describe("app state", () => {
     expect(mergeAppState(local, remote).tasks).toEqual([
       { id: "t1", title: "Read", completed: true, pomodoros: 1 },
     ]);
+  });
+
+  test("mergeAppState unions session logs by id", () => {
+    const morning = createSessionLogEntry({
+      id: "morning",
+      completedAt: Date.parse("2026-08-24T09:00:00"),
+      minutes: 25,
+      task: { id: "t1", title: "Read" },
+    });
+    const afternoon = createSessionLogEntry({
+      id: "afternoon",
+      completedAt: Date.parse("2026-08-24T14:00:00"),
+      minutes: 25,
+      task: null,
+    });
+    const local = { ...defaultState(), updatedAt: 20, sessionLog: [morning] };
+    const remote = { ...defaultState(), updatedAt: 10, sessionLog: [afternoon] };
+
+    expect(mergeAppState(local, remote).sessionLog).toEqual([morning, afternoon]);
+  });
+
+  test("nextStateAfterFocusSession appends a log entry and increments the selected task", () => {
+    const completedAt = Date.parse("2026-08-24T10:30:00");
+    const prev = {
+      ...defaultState(),
+      selectedTaskId: "t1",
+      sessionDate: "2026-08-24",
+      completedSessions: 1,
+      tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 2 }],
+    };
+
+    const next = nextStateAfterFocusSession(prev, { id: "s1", completedAt });
+
+    expect(next.completedSessions).toBe(2);
+    expect(next.tasks[0]?.pomodoros).toBe(3);
+    expect(next.sessionLog).toEqual([
+      createSessionLogEntry({
+        id: "s1",
+        completedAt,
+        minutes: 25,
+        task: { id: "t1", title: "Read" },
+      }),
+    ]);
+  });
+
+  test("nextStateAfterFocusSession is a no-op when the entry id already exists", () => {
+    const completedAt = Date.parse("2026-08-24T10:30:00");
+    const entry = createSessionLogEntry({
+      id: "s1",
+      completedAt,
+      minutes: 25,
+      task: null,
+    });
+    const prev = { ...defaultState(), sessionLog: [entry], completedSessions: 1 };
+
+    expect(nextStateAfterFocusSession(prev, { id: "s1", completedAt })).toBe(prev);
   });
 });

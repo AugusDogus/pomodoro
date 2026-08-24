@@ -95,6 +95,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 
 .page-intro { padding: 60px 4px 30px; }
 .page-intro h1 { margin: 0; font-size: clamp(35px, 4.8vw, 59px); font-weight: 600; line-height: 1; letter-spacing: -0.057em; }
+.page-intro p { margin: 14px 0 0; color: var(--muted); font-size: 14px; font-weight: 560; }
 
 .workspace-grid { display: grid; grid-template-columns: minmax(0, 1.02fr) minmax(0, 0.98fr); gap: 16px; }
 .focus-card, .tasks-card { min-height: 638px; border-radius: 26px; }
@@ -128,6 +129,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 .timer-content { position: absolute; inset: 0; display: flex; align-items: center; flex-direction: column; justify-content: center; padding: 32px; text-align: center; }
 .timer-content strong { margin: 0 0 8px; font-family: "DM Mono", monospace; font-size: clamp(55px, 7vw, 72px); font-weight: 400; line-height: 1.15; letter-spacing: -0.065em; font-variant-numeric: tabular-nums; }
 .timer-task { width: 82%; overflow: hidden; color: #bac6bd; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.timer-sessions { display: none; }
 .timer-actions { display: flex; justify-content: center; gap: 9px; margin-top: auto; }
 
 .button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 12px; font-weight: 680; cursor: pointer; transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease, transform 120ms var(--ease-out), opacity 160ms ease; }
@@ -174,6 +176,46 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 .add-task > svg { flex: 0 0 auto; color: var(--muted-light); }
 .add-task input { min-width: 0; height: 36px; flex: 1; border: 0; outline: 0; background: transparent; font-size: 12px; }
 .add-task input::placeholder { color: #a7aea7; }
+
+.log-card {
+  display: flex;
+  flex-direction: column;
+  grid-column: 1 / -1;
+  min-height: 280px;
+  padding: 30px;
+  border: 1px solid rgba(37, 55, 47, 0.08);
+  border-radius: 26px;
+  background: rgba(255, 252, 246, 0.88);
+  box-shadow: 0 18px 50px rgba(50, 56, 50, 0.055);
+}
+.log-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.log-card h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.035em; }
+.log-header p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.log-list { display: flex; flex: 1; flex-direction: column; min-height: 140px; margin-top: 18px; }
+.log-empty { margin: auto 0; color: var(--muted); font-size: 13px; }
+.log-day + .log-day { margin-top: 22px; }
+.log-day h3 {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 4px;
+  color: var(--ink-soft);
+  font-size: 12px;
+  font-weight: 700;
+}
+.log-day h3 span { color: var(--muted); font-family: "DM Mono", monospace; font-size: 10px; font-weight: 500; }
+.log-day ol { margin: 0; padding: 0; list-style: none; }
+.log-day li {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 46px;
+  border-bottom: 1px solid #e7e3da;
+}
+.log-day time { color: var(--muted); font-family: "DM Mono", monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
+.log-day li > span { overflow: hidden; font-size: 13px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
+.log-day small { color: var(--muted-light); font-family: "DM Mono", monospace; font-size: 10px; }
 
 .dialog-overlay { position: fixed; z-index: 40; inset: 0; background: rgba(24, 31, 27, 0.36); backdrop-filter: blur(3px); transition: opacity 180ms ease; }
 .dialog-overlay[data-state="closed"] { opacity: 0; }
@@ -257,6 +299,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 @media (max-width: 900px) {
   .workspace-grid { grid-template-columns: 1fr; }
   .focus-card, .tasks-card { min-height: 620px; }
+  .log-card { min-height: 280px; }
   .task-delete { opacity: 1; }
 }
 
@@ -271,16 +314,17 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
   .settings-mobile { display: flex; }
   .page-intro { display: none; }
   .workspace-grid { display: block; min-height: 0; flex: 1; margin-top: 10px; }
-  .focus-card, .tasks-card { height: 100%; min-height: 0; padding: 18px; border-radius: 20px; }
-  .focus-card[data-mobile-active="false"], .tasks-card[data-mobile-active="false"] { display: none; }
+  .focus-card, .tasks-card, .log-card { height: 100%; min-height: 0; padding: 18px; border-radius: 20px; }
+  .focus-card[data-mobile-active="false"], .tasks-card[data-mobile-active="false"], .log-card[data-mobile-active="false"] { display: none; }
+  .timer-sessions { display: block; margin-top: 8px; color: #8fa094; font-size: 11px; }
   .mode-switcher { width: min(256px, 100%); }
   .timer-wrap { width: min(326px, 78vw, 43dvh); margin: 16px 0 12px; }
   .timer-content { padding: 20px; }
   .timer-content strong { font-size: clamp(42px, 15vw, 56px); }
-  .tasks-card { overflow: hidden; }
-  .task-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+  .tasks-card, .log-card { overflow: hidden; }
+  .task-list, .log-list { min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
   .selected-mark { display: none; }
-  .mobile-tabs { position: fixed; z-index: 20; right: 12px; bottom: max(8px, env(safe-area-inset-bottom)); left: 12px; display: grid; grid-template-columns: 1fr 1fr; height: 60px; padding: 5px; border: 1px solid rgba(37, 55, 47, 0.11); border-radius: 17px; background: rgba(255, 252, 246, 0.96); box-shadow: 0 12px 36px rgba(26, 37, 31, 0.16); backdrop-filter: blur(14px); }
+  .mobile-tabs { position: fixed; z-index: 20; right: 12px; bottom: max(8px, env(safe-area-inset-bottom)); left: 12px; display: grid; grid-template-columns: 1fr 1fr 1fr; height: 60px; padding: 5px; border: 1px solid rgba(37, 55, 47, 0.11); border-radius: 17px; background: rgba(255, 252, 246, 0.96); box-shadow: 0 12px 36px rgba(26, 37, 31, 0.16); backdrop-filter: blur(14px); }
   .mobile-tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; border: 0; border-radius: 12px; color: var(--muted); background: transparent; font-size: 11px; font-weight: 680; cursor: pointer; }
   .mobile-tabs button[aria-selected="true"] { color: #fffcf6; background: var(--focus); }
   .mobile-tabs button:active { transform: scale(0.97); }

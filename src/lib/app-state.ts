@@ -1,4 +1,14 @@
+import {
+  createSessionLogEntry,
+  dateKeyFromMs,
+  mergeSessionLog,
+  parseSessionLog,
+  sameSessionLog,
+  type SessionLogEntry,
+} from "./session-log";
 import { TIMER_SECONDS, type TimerMode } from "./timer";
+
+export type { SessionLogEntry, SessionTask } from "./session-log";
 
 export type Task = {
   id: string;
@@ -20,6 +30,7 @@ export type StoredAppState = {
   selectedTaskId: string | null;
   completedSessions: number;
   sessionDate: string;
+  sessionLog: SessionLogEntry[];
   preferences: Preferences;
   updatedAt: number;
 };
@@ -27,9 +38,8 @@ export type StoredAppState = {
 export const MAX_FOCUS_MINUTES = 120;
 export const MAX_BREAK_MINUTES = 60;
 
-export function localDateKey(): string {
-  const today = new Date();
-  return [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
+export function localDateKey(now = Date.now()): string {
+  return dateKeyFromMs(now);
 }
 
 export function defaultState(): StoredAppState {
@@ -38,6 +48,7 @@ export function defaultState(): StoredAppState {
     selectedTaskId: null,
     completedSessions: 0,
     sessionDate: localDateKey(),
+    sessionLog: [],
     preferences: {
       sound: true,
       notifications: false,
@@ -101,6 +112,7 @@ export function parseAppState(value: unknown): StoredAppState {
     selectedTaskId: value.selectedTaskId,
     completedSessions: storedDate === today ? value.completedSessions : 0,
     sessionDate: today,
+    sessionLog: parseSessionLog(value.sessionLog),
     preferences: {
       sound: value.preferences.sound,
       notifications: value.preferences.notifications,
@@ -167,6 +179,7 @@ export function sameSnapshot(left: StoredAppState, right: StoredAppState): boole
     left.selectedTaskId === right.selectedTaskId &&
     left.completedSessions === right.completedSessions &&
     left.sessionDate === right.sessionDate &&
+    sameSessionLog(left.sessionLog, right.sessionLog) &&
     left.preferences.sound === right.preferences.sound &&
     left.preferences.notifications === right.preferences.notifications &&
     left.preferences.autoStartBreaks === right.preferences.autoStartBreaks &&
@@ -199,6 +212,7 @@ export function mergeAppState(left: StoredAppState, right: StoredAppState): Stor
     selectedTaskId,
     completedSessions: Math.max(left.completedSessions, right.completedSessions),
     sessionDate: localDateKey(),
+    sessionLog: mergeSessionLog(left.sessionLog, right.sessionLog),
     preferences: newer.preferences,
     updatedAt: Math.max(left.updatedAt, right.updatedAt),
   };
@@ -217,6 +231,31 @@ function pickSelectedTaskId(input: {
     if (exists(id)) return id;
   }
   return null;
+}
+
+export function nextStateAfterFocusSession(
+  prev: StoredAppState,
+  input: { id: string; completedAt: number },
+): StoredAppState {
+  if (prev.sessionLog.some((entry) => entry.id === input.id)) return prev;
+
+  const selected = prev.tasks.find((task) => task.id === prev.selectedTaskId) ?? null;
+  const entry = createSessionLogEntry({
+    id: input.id,
+    completedAt: input.completedAt,
+    minutes: prev.preferences.focusMinutes,
+    task: selected === null ? null : { id: selected.id, title: selected.title },
+  });
+
+  return {
+    ...prev,
+    completedSessions: prev.sessionDate === entry.dateKey ? prev.completedSessions + 1 : 1,
+    sessionDate: entry.dateKey,
+    sessionLog: [...prev.sessionLog, entry],
+    tasks: prev.tasks.map((task) =>
+      selected !== null && task.id === selected.id ? { ...task, pomodoros: task.pomodoros + 1 } : task,
+    ),
+  };
 }
 
 export function firstName(name: string): string {
