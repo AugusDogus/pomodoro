@@ -1,13 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import {
-  createLegacySessions,
   createSessionLogEntry,
   entryDateKey,
   groupSessionLog,
   msUntilNextLocalMidnight,
   parseSessionLog,
   pomodoroCountLabel,
-  seedLegacySessions,
   sessionDayLabel,
   sessionsOnDate,
   todayPomodoroLabel,
@@ -122,35 +120,6 @@ describe("session log", () => {
 
     expect(todaysPomodoroCount([today, yesterday], entryDateKey(today))).toBe(1);
     expect(todaysPomodoroCount([], "2026-08-24")).toBe(0);
-  });
-
-  test("seedLegacySessions writes leftover counter rows onto an empty day", () => {
-    expect(
-      seedLegacySessions({
-        sessionLog: [],
-        completedSessions: 3,
-        sessionDate: "2026-08-24",
-        minutes: 25,
-      }),
-    ).toEqual(createLegacySessions({ dateKey: "2026-08-24", count: 3, minutes: 25 }));
-  });
-
-  test("seedLegacySessions does not add leftovers once that day has log rows", () => {
-    const recorded = createSessionLogEntry({
-      id: "s1",
-      completedAt: Date.parse("2026-08-24T10:00:00"),
-      minutes: 25,
-      task: null,
-    });
-
-    expect(
-      seedLegacySessions({
-        sessionLog: [recorded],
-        completedSessions: 9,
-        sessionDate: "2026-08-24",
-        minutes: 25,
-      }),
-    ).toEqual([recorded]);
   });
 
   test("msUntilNextLocalMidnight is the remaining time before the next local day", () => {

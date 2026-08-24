@@ -3,14 +3,13 @@ import {
   chooseSnapshot,
   defaultState,
   firstName,
-  localDateKey,
   mergeAppState,
   nextStateAfterFocusSession,
   parseAppState,
   parseStoredState,
   touchState,
 } from "./app-state";
-import { createLegacySessions, createSessionLogEntry, todaysPomodoroCount } from "./session-log";
+import { createSessionLogEntry, todaysPomodoroCount } from "./session-log";
 
 describe("app state", () => {
   test("parses a valid stored snapshot", () => {
@@ -18,8 +17,6 @@ describe("app state", () => {
       JSON.stringify({
         tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 2 }],
         selectedTaskId: "t1",
-        completedSessions: 3,
-        sessionDate: localDateKey(),
         preferences: {
           sound: false,
           notifications: true,
@@ -32,9 +29,7 @@ describe("app state", () => {
     );
 
     expect(state.tasks).toEqual([{ id: "t1", title: "Read", completed: false, pomodoros: 2 }]);
-    expect(state.sessionLog).toEqual(
-      createLegacySessions({ dateKey: localDateKey(), count: 3, minutes: 30 }),
-    );
+    expect(state.sessionLog).toEqual([]);
     expect(state.preferences.focusMinutes).toBe(30);
     expect(state.updatedAt).toBe(42);
   });
@@ -52,48 +47,6 @@ describe("app state", () => {
     });
 
     expect(state.sessionLog).toEqual([entry]);
-  });
-
-  test("parse ignores a leftover counter once that day already has log rows", () => {
-    const entry = createSessionLogEntry({
-      id: "s1",
-      completedAt: Date.now(),
-      minutes: 25,
-      task: null,
-    });
-    const state = parseAppState({
-      ...defaultState(),
-      completedSessions: 9,
-      sessionDate: localDateKey(),
-      sessionLog: [entry],
-    });
-
-    expect(state.sessionLog).toEqual([entry]);
-  });
-
-  test("completing after parse keeps today's leftover count", () => {
-    const today = localDateKey();
-    const completedAt = Date.parse(`${today}T10:30:00`);
-    const prev = parseAppState({
-      ...defaultState(),
-      selectedTaskId: "t1",
-      sessionDate: today,
-      completedSessions: 4,
-      tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 2 }],
-    });
-
-    const next = nextStateAfterFocusSession(prev, { id: "s1", completedAt });
-
-    expect(todaysPomodoroCount(next.sessionLog, today)).toBe(5);
-    expect(next.sessionLog).toEqual([
-      ...createLegacySessions({ dateKey: today, count: 4, minutes: 25 }),
-      createSessionLogEntry({
-        id: "s1",
-        completedAt,
-        minutes: 25,
-        task: { id: "t1", title: "Read" },
-      }),
-    ]);
   });
 
   test("falls back when stored JSON is invalid", () => {

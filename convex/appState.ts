@@ -12,8 +12,6 @@ const taskValidator = v.object({
 const stateValidator = v.object({
   tasks: v.array(taskValidator),
   selectedTaskId: v.union(v.string(), v.null()),
-  completedSessions: v.number(),
-  sessionDate: v.string(),
   sound: v.boolean(),
   notifications: v.boolean(),
   autoStartBreaks: v.boolean(),
@@ -55,8 +53,6 @@ export const save = mutation({
       userId,
       tasks: args.state.tasks,
       selectedTaskId: args.state.selectedTaskId,
-      completedSessions: args.state.completedSessions,
-      sessionDate: args.state.sessionDate,
       sound: args.state.sound,
       notifications: args.state.notifications,
       autoStartBreaks: args.state.autoStartBreaks,

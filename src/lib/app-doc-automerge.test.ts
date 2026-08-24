@@ -7,12 +7,10 @@ import {
   type AppDoc,
 } from "./app-doc";
 
-function legacyDoc(): A.Doc<AppDoc> {
+function docWithoutSessionLog(): A.Doc<AppDoc> {
   return A.from({
     tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 0 }],
     selectedTaskId: "t1",
-    completedSessions: 0,
-    sessionDate: "2026-08-24",
     sound: true,
     notifications: false,
     autoStartBreaks: false,
@@ -23,7 +21,7 @@ function legacyDoc(): A.Doc<AppDoc> {
 
 describe("automerge session log", () => {
   test("read and heal recover sessions after concurrent first writes on old docs", () => {
-    const base = legacyDoc();
+    const base = docWithoutSessionLog();
     const completedAt = Date.parse("2026-08-24T11:00:00");
     const left = A.change(A.clone(base), (doc) => {
       completeFocusSession(doc, { id: "left", completedAt });

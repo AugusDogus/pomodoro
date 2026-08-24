@@ -7,11 +7,10 @@ import {
   appDocFromState,
   completeFocusSession,
   emptyDirty,
-  ensureSessionLog,
   stateFromAppDoc,
 } from "./app-doc";
 import { defaultState } from "./app-state";
-import { createLegacySessions, createSessionLogEntry, todaysPomodoroCount } from "./session-log";
+import { createSessionLogEntry } from "./session-log";
 
 describe("app doc", () => {
   test("round-trips a stored snapshot without a clock", () => {
@@ -74,7 +73,6 @@ describe("app doc", () => {
         { id: "shared", title: "Shared", completed: true, pomodoros: 1 },
       ],
     });
-    doc.completedSessions = 4;
     const prev = {
       ...stateFromAppDoc(doc),
       tasks: [{ id: "shared", title: "Shared", completed: true, pomodoros: 1 }],
@@ -90,7 +88,6 @@ describe("app doc", () => {
     accumulateDirty(dirty, prev, next);
     applyDirtyToAppDoc(doc, dirty);
 
-    expect(doc.completedSessions).toBe(4);
     expect(doc.tasks.map((task) => [task.id, task.completed, task.pomodoros])).toEqual([
       ["remote", true, 2],
       ["shared", false, 2],
@@ -98,33 +95,18 @@ describe("app doc", () => {
     ]);
   });
 
-  test("ensureSessionLog copies leftover daily counts into the log", () => {
-    const doc = appDocFromState({
-      ...defaultState(),
-      tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 1 }],
-    });
-    doc.completedSessions = 2;
-    doc.sessionDate = "2026-08-24";
-
-    expect(ensureSessionLog(doc)).toEqual(createLegacySessions({ dateKey: "2026-08-24", count: 2, minutes: 25 }));
-  });
-
   test("completeFocusSession increments the selected task and appends a log entry", () => {
     const completedAt = Date.parse("2026-08-24T11:00:00");
-    const leftovers = createLegacySessions({ dateKey: "2026-08-24", count: 2, minutes: 25 });
     const doc = appDocFromState({
       ...defaultState(),
       selectedTaskId: "t1",
-      sessionLog: leftovers,
       tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 1 }],
     });
 
     completeFocusSession(doc, { id: "s1", completedAt });
 
-    expect(doc.completedSessions).toBe(0);
     expect(doc.tasks[0]?.pomodoros).toBe(2);
     expect(doc.sessionLog).toEqual([
-      ...leftovers,
       createSessionLogEntry({
         id: "s1",
         completedAt,
@@ -132,7 +114,6 @@ describe("app doc", () => {
         task: { id: "t1", title: "Read" },
       }),
     ]);
-    expect(todaysPomodoroCount(doc.sessionLog, "2026-08-24")).toBe(3);
   });
 
   test("completeFocusSession is a no-op when the entry id already exists", () => {

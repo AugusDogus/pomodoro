@@ -213,7 +213,7 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
   min-height: 46px;
   border-bottom: 1px solid #e7e3da;
 }
-.log-day time, .log-day .log-when { color: var(--muted); font-family: "DM Mono", monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
+.log-day time { color: var(--muted); font-family: "DM Mono", monospace; font-size: 11px; font-variant-numeric: tabular-nums; }
 .log-day li > span { overflow: hidden; font-size: 13px; font-weight: 620; text-overflow: ellipsis; white-space: nowrap; }
 .log-day small { color: var(--muted-light); font-family: "DM Mono", monospace; font-size: 10px; }
 

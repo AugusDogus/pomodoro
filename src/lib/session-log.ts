@@ -3,22 +3,12 @@ export type SessionTask = {
   title: string;
 };
 
-export type RecordedSession = {
-  kind: "recorded";
+export type SessionLogEntry = {
   id: string;
   completedAt: number;
   minutes: number;
   task: SessionTask | null;
 };
-
-export type LegacySession = {
-  kind: "legacy";
-  id: string;
-  dateKey: string;
-  minutes: number;
-};
-
-export type SessionLogEntry = RecordedSession | LegacySession;
 
 export type SessionLogDay = {
   dateKey: string;
@@ -31,16 +21,7 @@ export function dateKeyFromMs(ms: number): string {
 }
 
 export function entryDateKey(entry: SessionLogEntry): string {
-  switch (entry.kind) {
-    case "recorded":
-      return dateKeyFromMs(entry.completedAt);
-    case "legacy":
-      return entry.dateKey;
-    default: {
-      const _exhaustive: never = entry;
-      return _exhaustive;
-    }
-  }
+  return dateKeyFromMs(entry.completedAt);
 }
 
 export function createSessionLogEntry(input: {
@@ -48,46 +29,13 @@ export function createSessionLogEntry(input: {
   completedAt: number;
   minutes: number;
   task: SessionTask | null;
-}): RecordedSession {
+}): SessionLogEntry {
   return {
-    kind: "recorded",
     id: input.id,
     completedAt: input.completedAt,
     minutes: input.minutes,
     task: input.task === null ? null : { id: input.task.id, title: input.task.title },
   };
-}
-
-export function createLegacySessions(input: {
-  dateKey: string;
-  count: number;
-  minutes: number;
-}): LegacySession[] {
-  if (!Number.isInteger(input.count) || input.count < 1) return [];
-  return Array.from({ length: input.count }, (_, index) => ({
-    kind: "legacy",
-    id: `legacy:${input.dateKey}:${index}`,
-    dateKey: input.dateKey,
-    minutes: input.minutes,
-  }));
-}
-
-export function seedLegacySessions(input: {
-  sessionLog: SessionLogEntry[];
-  completedSessions: number;
-  sessionDate: string;
-  minutes: number;
-}): SessionLogEntry[] {
-  if (!isDateKey(input.sessionDate)) return input.sessionLog;
-  if (sessionsOnDate(input.sessionLog, input.sessionDate).length > 0) return input.sessionLog;
-  return mergeSessionLog(
-    input.sessionLog,
-    createLegacySessions({
-      dateKey: input.sessionDate,
-      count: input.completedSessions,
-      minutes: input.minutes,
-    }),
-  );
 }
 
 export function parseSessionLog(value: unknown): SessionLogEntry[] {
@@ -105,7 +53,7 @@ export function mergeSessionLog(left: SessionLogEntry[], right: SessionLogEntry[
   const byId = new Map<string, SessionLogEntry>();
   for (const entry of right) byId.set(entry.id, entry);
   for (const entry of left) byId.set(entry.id, entry);
-  return [...byId.values()].sort((a, b) => entrySortKey(a) - entrySortKey(b));
+  return [...byId.values()].sort((a, b) => a.completedAt - b.completedAt);
 }
 
 export function sameSessionLog(left: SessionLogEntry[], right: SessionLogEntry[]): boolean {
@@ -120,7 +68,7 @@ export function sameSessionLog(left: SessionLogEntry[], right: SessionLogEntry[]
 export function groupSessionLog(entries: SessionLogEntry[]): SessionLogDay[] {
   const groups: SessionLogDay[] = [];
   const indexByDate = new Map<string, number>();
-  const newestFirst = [...entries].sort((left, right) => entrySortKey(right) - entrySortKey(left));
+  const newestFirst = [...entries].sort((left, right) => right.completedAt - left.completedAt);
 
   for (const entry of newestFirst) {
     const dateKey = entryDateKey(entry);
@@ -179,12 +127,6 @@ export function msUntilNextLocalMidnight(now = Date.now()): number {
 
 function parseSessionLogEntry(value: unknown): SessionLogEntry | null {
   if (!isPlainRecord(value)) return null;
-  if (value.kind === "legacy") {
-    if (typeof value.id !== "string" || value.id.length === 0) return null;
-    if (typeof value.dateKey !== "string" || !isDateKey(value.dateKey)) return null;
-    if (typeof value.minutes !== "number" || !Number.isInteger(value.minutes) || value.minutes < 1) return null;
-    return { kind: "legacy", id: value.id, dateKey: value.dateKey, minutes: value.minutes };
-  }
   if (value.kind !== undefined && value.kind !== "recorded") return null;
   if (typeof value.id !== "string" || value.id.length === 0) return null;
   if (typeof value.completedAt !== "number" || !Number.isFinite(value.completedAt)) return null;
@@ -206,31 +148,12 @@ function parseSessionLogEntry(value: unknown): SessionLogEntry | null {
   });
 }
 
-function entrySortKey(entry: SessionLogEntry): number {
-  switch (entry.kind) {
-    case "recorded":
-      return entry.completedAt;
-    case "legacy":
-      return parseDateKey(entry.dateKey)?.getTime() ?? 0;
-    default: {
-      const _exhaustive: never = entry;
-      return _exhaustive;
-    }
-  }
-}
-
 function sameSessionLogEntry(left: SessionLogEntry, right: SessionLogEntry): boolean {
-  if (left.kind === "recorded" && right.kind === "recorded") {
-    return (
-      left.completedAt === right.completedAt &&
-      left.minutes === right.minutes &&
-      sameSessionTask(left.task, right.task)
-    );
-  }
-  if (left.kind === "legacy" && right.kind === "legacy") {
-    return left.dateKey === right.dateKey && left.minutes === right.minutes;
-  }
-  return false;
+  return (
+    left.completedAt === right.completedAt &&
+    left.minutes === right.minutes &&
+    sameSessionTask(left.task, right.task)
+  );
 }
 
 function sameSessionTask(left: SessionTask | null, right: SessionTask | null): boolean {
@@ -240,10 +163,6 @@ function sameSessionTask(left: SessionTask | null, right: SessionTask | null): b
 
 function isSessionTask(value: unknown): value is SessionTask {
   return isPlainRecord(value) && typeof value.id === "string" && typeof value.title === "string";
-}
-
-function isDateKey(value: string): boolean {
-  return parseDateKey(value) !== null;
 }
 
 function parseDateKey(dateKey: string): Date | null {

@@ -1,7 +1,6 @@
 import * as A from "@automerge/automerge/next";
 import {
   isTask,
-  localDateKey,
   parseDuration,
   sessionEntryFromFocus,
   type StoredAppState,
@@ -13,7 +12,6 @@ import {
   createSessionLogEntry,
   mergeSessionLog,
   parseSessionLog,
-  seedLegacySessions,
   type SessionLogEntry,
 } from "./session-log";
 import { TIMER_SECONDS } from "./timer";
@@ -21,8 +19,6 @@ import { TIMER_SECONDS } from "./timer";
 export type AppDoc = {
   tasks: Task[];
   selectedTaskId: string | null;
-  completedSessions: number;
-  sessionDate: string;
   sessionLog: SessionLogEntry[];
   sound: boolean;
   notifications: boolean;
@@ -81,8 +77,6 @@ export function appDocFromState(state: StoredAppState): AppDoc {
   return {
     tasks: state.tasks.map((task) => ({ ...task })),
     selectedTaskId: state.selectedTaskId,
-    completedSessions: 0,
-    sessionDate: localDateKey(),
     sessionLog: state.sessionLog.map(cloneSessionLogEntry),
     sound: state.preferences.sound,
     notifications: state.preferences.notifications,
@@ -98,7 +92,7 @@ export function stateFromAppDoc(doc: AppDoc): StoredAppState {
   return {
     tasks,
     selectedTaskId: tasks.some((task) => task.id === doc.selectedTaskId) ? doc.selectedTaskId : null,
-    sessionLog: leftoverSessionLog(doc, readSessionLog(doc)),
+    sessionLog: sessionLogFromDoc(doc),
     preferences: {
       sound: doc.sound === true,
       notifications: doc.notifications === true,
@@ -161,7 +155,7 @@ export function addMissingTasksToAppDoc(doc: AppDoc, incoming: StoredAppState): 
 
 export function addMissingSessionsToAppDoc(doc: AppDoc, incoming: StoredAppState): void {
   for (const entry of incoming.sessionLog) {
-    appendSessionIfMissing(doc, entry);
+    pushSessionIfMissing(doc, entry);
   }
 }
 
@@ -235,8 +229,9 @@ export function applyDirtyToAppDoc(doc: AppDoc, dirty: AppDocDirty): void {
     const current = doc.tasks.find((task) => task.id === id);
     if (current !== undefined && delta !== 0) current.pomodoros += delta;
   }
+  ensureSessionLog(doc);
   for (const entry of dirty.addedSessions) {
-    appendSessionIfMissing(doc, entry);
+    pushSessionIfMissing(doc, entry);
   }
   if (dirty.selectedTaskId !== undefined) doc.selectedTaskId = dirty.selectedTaskId;
   if (dirty.sound !== undefined) doc.sound = dirty.sound;
@@ -258,7 +253,7 @@ export function completeFocusSession(doc: AppDoc, input: { id: string; completed
     },
     input,
   );
-  if (!appendSessionIfMissing(doc, entry)) return;
+  if (!pushSessionIfMissing(doc, entry)) return;
   if (entry.task === null) return;
   const taskId = entry.task.id;
   const task = doc.tasks.find((item) => item.id === taskId);
@@ -267,30 +262,14 @@ export function completeFocusSession(doc: AppDoc, input: { id: string; completed
 
 export function ensureSessionLog(doc: AppDoc): SessionLogEntry[] {
   if (!Array.isArray(doc.sessionLog)) doc.sessionLog = [];
-  for (const entry of conflictingSessionLogs(doc)) {
-    pushSessionIfMissing(doc, entry);
-  }
-  for (const entry of leftoverSessionLog(doc, parseSessionLog(doc.sessionLog))) {
+  for (const entry of sessionLogFromDoc(doc)) {
     pushSessionIfMissing(doc, entry);
   }
   return parseSessionLog(doc.sessionLog);
 }
 
-function leftoverSessionLog(doc: AppDoc, sessionLog: SessionLogEntry[]): SessionLogEntry[] {
-  return seedLegacySessions({
-    sessionLog,
-    completedSessions: typeof doc.completedSessions === "number" ? doc.completedSessions : 0,
-    sessionDate: typeof doc.sessionDate === "string" ? doc.sessionDate : localDateKey(),
-    minutes: parseDuration(doc.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES),
-  });
-}
-
-function readSessionLog(doc: AppDoc): SessionLogEntry[] {
+function sessionLogFromDoc(doc: AppDoc): SessionLogEntry[] {
   return mergeSessionLog(parseSessionLog(doc.sessionLog), conflictingSessionLogs(doc));
-}
-
-function appendSessionIfMissing(doc: AppDoc, entry: SessionLogEntry): boolean {
-  return pushSessionIfMissing(doc, entry);
 }
 
 function pushSessionIfMissing(doc: AppDoc, entry: SessionLogEntry): boolean {
@@ -305,21 +284,12 @@ function sessionLogHasId(entries: SessionLogEntry[], id: string): boolean {
 }
 
 function cloneSessionLogEntry(entry: SessionLogEntry): SessionLogEntry {
-  switch (entry.kind) {
-    case "recorded":
-      return createSessionLogEntry({
-        id: entry.id,
-        completedAt: entry.completedAt,
-        minutes: entry.minutes,
-        task: entry.task,
-      });
-    case "legacy":
-      return { kind: "legacy", id: entry.id, dateKey: entry.dateKey, minutes: entry.minutes };
-    default: {
-      const _exhaustive: never = entry;
-      return _exhaustive;
-    }
-  }
+  return createSessionLogEntry({
+    id: entry.id,
+    completedAt: entry.completedAt,
+    minutes: entry.minutes,
+    task: entry.task,
+  });
 }
 
 function conflictingSessionLogs(doc: AppDoc): SessionLogEntry[] {

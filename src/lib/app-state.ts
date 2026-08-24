@@ -4,8 +4,6 @@ import {
   mergeSessionLog,
   parseSessionLog,
   sameSessionLog,
-  seedLegacySessions,
-  type RecordedSession,
   type SessionLogEntry,
 } from "./session-log";
 import { TIMER_SECONDS, type TimerMode } from "./timer";
@@ -101,19 +99,12 @@ export function parseAppState(value: unknown): StoredAppState {
     return defaultState();
   }
 
-  const today = localDateKey();
   const focusMinutes = parseDuration(value.preferences.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES);
-  const sessionLog = seedLegacySessions({
-    sessionLog: parseSessionLog(value.sessionLog),
-    completedSessions: typeof value.completedSessions === "number" ? value.completedSessions : 0,
-    sessionDate: typeof value.sessionDate === "string" ? value.sessionDate : today,
-    minutes: focusMinutes,
-  });
 
   return {
     tasks: value.tasks,
     selectedTaskId: value.selectedTaskId,
-    sessionLog,
+    sessionLog: parseSessionLog(value.sessionLog),
     preferences: {
       sound: value.preferences.sound,
       notifications: value.preferences.notifications,
@@ -238,7 +229,7 @@ export function sessionEntryFromFocus(
     focusMinutes: number;
   },
   input: { id: string; completedAt: number },
-): RecordedSession {
+): SessionLogEntry {
   const selected = source.tasks.find((task) => task.id === source.selectedTaskId) ?? null;
   return createSessionLogEntry({
     id: input.id,

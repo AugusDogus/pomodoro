@@ -1,5 +1,4 @@
-import { localDateKey, mergeAppState, parseAppState, type StoredAppState } from "./app-state";
-import { todaysPomodoroCount } from "./session-log";
+import { mergeAppState, parseAppState, type StoredAppState } from "./app-state";
 
 export const STORAGE_KEY = "pomodoro.study-state.v1";
 export const SYNC_HINT_KEY = "pomodoro.sync-status.v1";
@@ -17,8 +16,6 @@ export type SyncHint = "synced";
 export type RemoteAppState = {
   tasks: StoredAppState["tasks"];
   selectedTaskId: string | null;
-  completedSessions: number;
-  sessionDate: string;
   sound: boolean;
   notifications: boolean;
   autoStartBreaks: boolean;
@@ -75,8 +72,6 @@ export function storedStateFromRemote(remote: RemoteAppState): StoredAppState {
   return parseAppState({
     tasks: remote.tasks,
     selectedTaskId: remote.selectedTaskId,
-    completedSessions: remote.completedSessions,
-    sessionDate: remote.sessionDate,
     preferences: {
       sound: remote.sound,
       notifications: remote.notifications,
@@ -92,8 +87,6 @@ export function remoteStateFromStored(state: StoredAppState): RemoteAppState {
   return {
     tasks: state.tasks,
     selectedTaskId: state.selectedTaskId,
-    completedSessions: todaysPomodoroCount(state.sessionLog, localDateKey()),
-    sessionDate: localDateKey(),
     sound: state.preferences.sound,
     notifications: state.preferences.notifications,
     autoStartBreaks: state.preferences.autoStartBreaks,

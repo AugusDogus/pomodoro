@@ -37,8 +37,6 @@ export const current = query({
           : {
               tasks: snapshot.tasks,
               selectedTaskId: snapshot.selectedTaskId,
-              completedSessions: snapshot.completedSessions,
-              sessionDate: snapshot.sessionDate,
               sound: snapshot.sound,
               notifications: snapshot.notifications,
               autoStartBreaks: snapshot.autoStartBreaks,

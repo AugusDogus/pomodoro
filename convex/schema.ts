@@ -27,8 +27,6 @@ export default defineSchema({
     userId: v.id("users"),
     tasks: v.array(task),
     selectedTaskId: v.union(v.string(), v.null()),
-    completedSessions: v.number(),
-    sessionDate: v.string(),
     sound: v.boolean(),
     notifications: v.boolean(),
     autoStartBreaks: v.boolean(),
