@@ -191,8 +191,40 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 .log-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .log-card h2 { margin: 0; font-size: 21px; font-weight: 600; letter-spacing: -0.035em; }
 .log-header p { margin: 6px 0 0; color: var(--muted); font-size: 12px; }
+.log-count {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-family: "DM Mono", monospace;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.log-count strong { color: var(--ink-soft); font-weight: 500; }
 .log-list { display: flex; flex: 1; flex-direction: column; min-height: 140px; margin-top: 18px; }
-.log-empty { margin: auto 0; color: var(--muted); font-size: 13px; }
+.log-empty {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 220px;
+  margin: 0;
+  padding: 8px 24px 32px;
+  color: var(--muted);
+  text-align: center;
+}
+.log-empty-mark { width: 88px; height: 88px; margin-bottom: 10px; }
+.log-empty p { margin: 0; color: var(--ink-soft); font-size: 15px; font-weight: 650; letter-spacing: -0.03em; }
+.log-empty small { max-width: 248px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .log-day + .log-day { margin-top: 22px; }
 .log-day h3 {
   display: flex;
