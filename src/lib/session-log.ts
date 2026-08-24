@@ -90,10 +90,6 @@ export function seedLegacySessions(input: {
   );
 }
 
-export function isSessionLogEntry(value: unknown): value is SessionLogEntry {
-  return parseSessionLogEntry(value) !== null;
-}
-
 export function parseSessionLog(value: unknown): SessionLogEntry[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return [];

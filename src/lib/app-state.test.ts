@@ -3,6 +3,7 @@ import {
   chooseSnapshot,
   defaultState,
   firstName,
+  localDateKey,
   mergeAppState,
   nextStateAfterFocusSession,
   parseAppState,
@@ -18,7 +19,7 @@ describe("app state", () => {
         tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 2 }],
         selectedTaskId: "t1",
         completedSessions: 3,
-        sessionDate: defaultState().sessionDate,
+        sessionDate: localDateKey(),
         preferences: {
           sound: false,
           notifications: true,
@@ -32,9 +33,8 @@ describe("app state", () => {
 
     expect(state.tasks).toEqual([{ id: "t1", title: "Read", completed: false, pomodoros: 2 }]);
     expect(state.sessionLog).toEqual(
-      createLegacySessions({ dateKey: defaultState().sessionDate, count: 3, minutes: 30 }),
+      createLegacySessions({ dateKey: localDateKey(), count: 3, minutes: 30 }),
     );
-    expect(state.completedSessions).toBe(3);
     expect(state.preferences.focusMinutes).toBe(30);
     expect(state.updatedAt).toBe(42);
   });
@@ -54,7 +54,7 @@ describe("app state", () => {
     expect(state.sessionLog).toEqual([entry]);
   });
 
-  test("derives today's count from the log and ignores a stale counter", () => {
+  test("parse ignores a leftover counter once that day already has log rows", () => {
     const entry = createSessionLogEntry({
       id: "s1",
       completedAt: Date.now(),
@@ -64,24 +64,23 @@ describe("app state", () => {
     const state = parseAppState({
       ...defaultState(),
       completedSessions: 9,
-      sessionDate: defaultState().sessionDate,
+      sessionDate: localDateKey(),
       sessionLog: [entry],
     });
 
-    expect(state.completedSessions).toBe(1);
     expect(state.sessionLog).toEqual([entry]);
   });
 
-  test("completing the first logged session keeps today's leftover count", () => {
-    const today = defaultState().sessionDate;
+  test("completing after parse keeps today's leftover count", () => {
+    const today = localDateKey();
     const completedAt = Date.parse(`${today}T10:30:00`);
-    const prev = {
+    const prev = parseAppState({
       ...defaultState(),
       selectedTaskId: "t1",
       sessionDate: today,
       completedSessions: 4,
       tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 2 }],
-    };
+    });
 
     const next = nextStateAfterFocusSession(prev, { id: "s1", completedAt });
 
@@ -104,7 +103,7 @@ describe("app state", () => {
 
   test("prefers the newer snapshot", () => {
     const older = { ...defaultState(), updatedAt: 10 };
-    const newer = { ...defaultState(), updatedAt: 20, completedSessions: 4 };
+    const newer = { ...defaultState(), updatedAt: 20, selectedTaskId: "later" };
 
     expect(chooseSnapshot(older, newer)).toEqual({ kind: "remote", state: newer, shouldPush: false });
     expect(chooseSnapshot(newer, older)).toEqual({ kind: "local", state: newer, shouldPush: true });
@@ -222,8 +221,6 @@ describe("app state", () => {
     const prev = {
       ...defaultState(),
       selectedTaskId: "t1",
-      sessionDate: "2026-08-24",
-      completedSessions: 1,
       tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 2 }],
     };
 
@@ -231,7 +228,6 @@ describe("app state", () => {
 
     expect(next.tasks[0]?.pomodoros).toBe(3);
     expect(next.sessionLog).toEqual([
-      ...createLegacySessions({ dateKey: "2026-08-24", count: 1, minutes: 25 }),
       createSessionLogEntry({
         id: "s1",
         completedAt,
@@ -239,7 +235,7 @@ describe("app state", () => {
         task: { id: "t1", title: "Read" },
       }),
     ]);
-    expect(todaysPomodoroCount(next.sessionLog, "2026-08-24")).toBe(2);
+    expect(todaysPomodoroCount(next.sessionLog, "2026-08-24")).toBe(1);
   });
 
   test("nextStateAfterFocusSession is a no-op when the entry id already exists", () => {
@@ -250,7 +246,7 @@ describe("app state", () => {
       minutes: 25,
       task: null,
     });
-    const prev = { ...defaultState(), sessionLog: [entry], completedSessions: 1 };
+    const prev = { ...defaultState(), sessionLog: [entry] };
 
     expect(nextStateAfterFocusSession(prev, { id: "s1", completedAt })).toBe(prev);
   });

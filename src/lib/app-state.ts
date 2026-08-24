@@ -5,7 +5,6 @@ import {
   parseSessionLog,
   sameSessionLog,
   seedLegacySessions,
-  sessionsOnDate,
   type RecordedSession,
   type SessionLogEntry,
 } from "./session-log";
@@ -31,8 +30,6 @@ export type Preferences = {
 export type StoredAppState = {
   tasks: Task[];
   selectedTaskId: string | null;
-  completedSessions: number;
-  sessionDate: string;
   sessionLog: SessionLogEntry[];
   preferences: Preferences;
   updatedAt: number;
@@ -49,8 +46,6 @@ export function defaultState(): StoredAppState {
   return {
     tasks: [],
     selectedTaskId: null,
-    completedSessions: 0,
-    sessionDate: localDateKey(),
     sessionLog: [],
     preferences: {
       sound: true,
@@ -101,27 +96,23 @@ export function parseAppState(value: unknown): StoredAppState {
   if (!isRecord(value)) return defaultState();
   if (!Array.isArray(value.tasks) || !value.tasks.every(isTask)) return defaultState();
   if (value.selectedTaskId !== null && typeof value.selectedTaskId !== "string") return defaultState();
-  if (typeof value.completedSessions !== "number") return defaultState();
   if (!isRecord(value.preferences)) return defaultState();
   if (typeof value.preferences.sound !== "boolean" || typeof value.preferences.notifications !== "boolean") {
     return defaultState();
   }
 
   const today = localDateKey();
-  const storedDate = typeof value.sessionDate === "string" ? value.sessionDate : today;
   const focusMinutes = parseDuration(value.preferences.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES);
   const sessionLog = seedLegacySessions({
     sessionLog: parseSessionLog(value.sessionLog),
-    completedSessions: value.completedSessions,
-    sessionDate: storedDate,
+    completedSessions: typeof value.completedSessions === "number" ? value.completedSessions : 0,
+    sessionDate: typeof value.sessionDate === "string" ? value.sessionDate : today,
     minutes: focusMinutes,
   });
 
   return {
     tasks: value.tasks,
     selectedTaskId: value.selectedTaskId,
-    completedSessions: sessionsOnDate(sessionLog, today).length,
-    sessionDate: today,
     sessionLog,
     preferences: {
       sound: value.preferences.sound,
@@ -215,24 +206,10 @@ export function mergeAppState(left: StoredAppState, right: StoredAppState): Stor
     preferred: newer.selectedTaskId,
     fallbacks: [left.selectedTaskId, right.selectedTaskId],
   });
-  const today = localDateKey();
-  const minutes = newer.preferences.focusMinutes;
-  const sessionLog = seedLegacySessions({
-    sessionLog: seedLegacySessions({
-      sessionLog: mergeSessionLog(left.sessionLog, right.sessionLog),
-      completedSessions: left.completedSessions,
-      sessionDate: left.sessionDate,
-      minutes,
-    }),
-    completedSessions: right.completedSessions,
-    sessionDate: right.sessionDate,
-    minutes,
-  });
+  const sessionLog = mergeSessionLog(left.sessionLog, right.sessionLog);
   const merged: StoredAppState = {
     tasks,
     selectedTaskId,
-    completedSessions: sessionsOnDate(sessionLog, today).length,
-    sessionDate: today,
     sessionLog,
     preferences: newer.preferences,
     updatedAt: Math.max(left.updatedAt, right.updatedAt),
@@ -285,21 +262,9 @@ export function nextStateAfterFocusSession(
     },
     input,
   );
-  const sessionLog = [
-    ...seedLegacySessions({
-      sessionLog: prev.sessionLog,
-      completedSessions: prev.completedSessions,
-      sessionDate: prev.sessionDate,
-      minutes: prev.preferences.focusMinutes,
-    }),
-    entry,
-  ];
-  const today = localDateKey();
   return {
     ...prev,
-    completedSessions: sessionsOnDate(sessionLog, today).length,
-    sessionDate: today,
-    sessionLog,
+    sessionLog: [...prev.sessionLog, entry],
     tasks: prev.tasks.map((task) =>
       entry.task !== null && task.id === entry.task.id ? { ...task, pomodoros: task.pomodoros + 1 } : task,
     ),

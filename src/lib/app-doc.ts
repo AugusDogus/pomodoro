@@ -1,7 +1,7 @@
 import * as A from "@automerge/automerge/next";
 import {
-  defaultState,
   isTask,
+  localDateKey,
   parseDuration,
   sessionEntryFromFocus,
   type StoredAppState,
@@ -14,7 +14,6 @@ import {
   mergeSessionLog,
   parseSessionLog,
   seedLegacySessions,
-  sessionsOnDate,
   type SessionLogEntry,
 } from "./session-log";
 import { TIMER_SECONDS } from "./timer";
@@ -82,8 +81,8 @@ export function appDocFromState(state: StoredAppState): AppDoc {
   return {
     tasks: state.tasks.map((task) => ({ ...task })),
     selectedTaskId: state.selectedTaskId,
-    completedSessions: state.completedSessions,
-    sessionDate: state.sessionDate,
+    completedSessions: 0,
+    sessionDate: localDateKey(),
     sessionLog: state.sessionLog.map(cloneSessionLogEntry),
     sound: state.preferences.sound,
     notifications: state.preferences.notifications,
@@ -95,20 +94,11 @@ export function appDocFromState(state: StoredAppState): AppDoc {
 
 export function stateFromAppDoc(doc: AppDoc): StoredAppState {
   const tasks = doc.tasks.filter(isTask);
-  const defaults = defaultState();
   const focusMinutes = parseDuration(doc.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES);
-  const sessionLog = seedLegacySessions({
-    sessionLog: readSessionLog(doc),
-    completedSessions: typeof doc.completedSessions === "number" ? doc.completedSessions : 0,
-    sessionDate: typeof doc.sessionDate === "string" ? doc.sessionDate : defaults.sessionDate,
-    minutes: focusMinutes,
-  });
   return {
     tasks,
     selectedTaskId: tasks.some((task) => task.id === doc.selectedTaskId) ? doc.selectedTaskId : null,
-    completedSessions: sessionsOnDate(sessionLog, defaults.sessionDate).length,
-    sessionDate: defaults.sessionDate,
-    sessionLog,
+    sessionLog: leftoverSessionLog(doc, readSessionLog(doc)),
     preferences: {
       sound: doc.sound === true,
       notifications: doc.notifications === true,
@@ -144,6 +134,7 @@ export function applyStateToAppDoc(doc: AppDoc, next: StoredAppState): void {
     if (current.pomodoros !== task.pomodoros) current.pomodoros = task.pomodoros;
   }
 
+  ensureSessionLog(doc);
   addMissingSessionsToAppDoc(doc, next);
 
   if (doc.selectedTaskId !== next.selectedTaskId) doc.selectedTaskId = next.selectedTaskId;
@@ -169,7 +160,6 @@ export function addMissingTasksToAppDoc(doc: AppDoc, incoming: StoredAppState): 
 }
 
 export function addMissingSessionsToAppDoc(doc: AppDoc, incoming: StoredAppState): void {
-  ensureSessionLog(doc);
   for (const entry of incoming.sessionLog) {
     appendSessionIfMissing(doc, entry);
   }
@@ -245,7 +235,6 @@ export function applyDirtyToAppDoc(doc: AppDoc, dirty: AppDocDirty): void {
     const current = doc.tasks.find((task) => task.id === id);
     if (current !== undefined && delta !== 0) current.pomodoros += delta;
   }
-  ensureSessionLog(doc);
   for (const entry of dirty.addedSessions) {
     appendSessionIfMissing(doc, entry);
   }
@@ -258,7 +247,8 @@ export function applyDirtyToAppDoc(doc: AppDoc, dirty: AppDocDirty): void {
 }
 
 export function completeFocusSession(doc: AppDoc, input: { id: string; completedAt: number }): void {
-  if (sessionLogHasId(ensureSessionLog(doc), input.id)) return;
+  const log = ensureSessionLog(doc);
+  if (sessionLogHasId(log, input.id)) return;
 
   const entry = sessionEntryFromFocus(
     {
@@ -280,17 +270,19 @@ export function ensureSessionLog(doc: AppDoc): SessionLogEntry[] {
   for (const entry of conflictingSessionLogs(doc)) {
     pushSessionIfMissing(doc, entry);
   }
-  const minutes = parseDuration(doc.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES);
-  const seeded = seedLegacySessions({
-    sessionLog: parseSessionLog(doc.sessionLog),
-    completedSessions: typeof doc.completedSessions === "number" ? doc.completedSessions : 0,
-    sessionDate: typeof doc.sessionDate === "string" ? doc.sessionDate : defaultState().sessionDate,
-    minutes,
-  });
-  for (const entry of seeded) {
+  for (const entry of leftoverSessionLog(doc, parseSessionLog(doc.sessionLog))) {
     pushSessionIfMissing(doc, entry);
   }
   return parseSessionLog(doc.sessionLog);
+}
+
+function leftoverSessionLog(doc: AppDoc, sessionLog: SessionLogEntry[]): SessionLogEntry[] {
+  return seedLegacySessions({
+    sessionLog,
+    completedSessions: typeof doc.completedSessions === "number" ? doc.completedSessions : 0,
+    sessionDate: typeof doc.sessionDate === "string" ? doc.sessionDate : localDateKey(),
+    minutes: parseDuration(doc.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES),
+  });
 }
 
 function readSessionLog(doc: AppDoc): SessionLogEntry[] {
@@ -298,7 +290,6 @@ function readSessionLog(doc: AppDoc): SessionLogEntry[] {
 }
 
 function appendSessionIfMissing(doc: AppDoc, entry: SessionLogEntry): boolean {
-  ensureSessionLog(doc);
   return pushSessionIfMissing(doc, entry);
 }
 

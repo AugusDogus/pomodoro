@@ -117,8 +117,8 @@ export function useAppDocument(input: {
 
     const incoming = latestRef.current;
     changeDoc((current) => {
-      if (persistDraft) applyDirtyToAppDoc(current, dirtyRef.current);
       ensureSessionLog(current);
+      if (persistDraft) applyDirtyToAppDoc(current, dirtyRef.current);
       if (adoptPeer) {
         addMissingTasksToAppDoc(current, incoming);
         addMissingSessionsToAppDoc(current, incoming);
