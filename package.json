@@ -8,18 +8,25 @@
     "build": "astro check && astro build",
     "preview": "astro preview",
     "check": "astro check",
-    "test": "bun test"
+    "test": "bun test",
+    "db:push": "drizzle-kit push"
   },
   "dependencies": {
+    "@astrojs/node": "^11.1.4",
     "@astrojs/react": "latest",
+    "@better-auth/drizzle-adapter": "^1.7.1",
     "@fontsource-variable/manrope": "^5.3.0",
     "@fontsource/dm-mono": "^5.3.0",
+    "@libsql/client": "^0.17.4",
     "@radix-ui/react-checkbox": "latest",
     "@radix-ui/react-dialog": "latest",
+    "@tursodatabase/sync": "^0.7.2",
     "@vite-pwa/astro": "latest",
     "astro": "latest",
+    "better-auth": "^1.7.1",
     "class-variance-authority": "latest",
     "clsx": "latest",
+    "drizzle-orm": "^0.45.2",
     "lucide-react": "latest",
     "react": "latest",
     "react-dom": "latest",
@@ -31,6 +38,7 @@
     "@types/bun": "^1.4.0",
     "@types/react": "latest",
     "@types/react-dom": "latest",
+    "drizzle-kit": "^0.31.10",
     "typescript": "6.0.2"
   }
 }

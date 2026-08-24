@@ -52,8 +52,45 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 .app-header { display: flex; align-items: center; justify-content: space-between; height: 48px; }
 .wordmark { font-size: 22px; font-weight: 750; letter-spacing: -0.065em; }
 .wordmark span { color: var(--accent); }
-.header-actions { display: flex; align-items: center; gap: 12px; }
-.offline-status { display: flex; align-items: center; gap: 7px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.header-actions { display: flex; align-items: center; gap: 10px; }
+.offline-status { display: flex; align-items: center; gap: 7px; min-width: 5.75rem; color: var(--muted); font-size: 12px; font-weight: 600; }
+.offline-status[data-quiet="true"] { visibility: hidden; }
+.account-cluster {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  height: 34px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: rgba(255, 252, 246, 0.6);
+}
+.account-cluster .settings-desktop { display: flex; }
+.account-cluster .settings-mobile { display: none; }
+.account-cluster-settings {
+  width: 34px;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  color: var(--muted);
+  background: transparent;
+}
+.account-cluster-identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  height: 100%;
+  padding: 0 11px;
+  border: 0;
+  border-left: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink-soft);
+  background: transparent;
+  font-size: 12px;
+  font-weight: 650;
+}
+.account-cluster-identity img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; }
+.account-cluster .button:active:not(:disabled) { transform: none; }
 .settings-mobile, .mobile-tabs { display: none; }
 
 .page-intro { padding: 60px 4px 30px; }
@@ -99,6 +136,14 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 .button-default { min-height: 46px; padding: 0 22px; font-size: 13px; }
 .button-small { height: 34px; padding: 0 15px; border-radius: 9px; font-size: 12px; }
 .button-icon-size { width: 42px; height: 42px; padding: 0; }
+.account-cluster .button-small,
+.account-cluster .button-icon-size {
+  height: 100%;
+  border-radius: 0;
+}
+.account-cluster .button-icon-size { width: 34px; padding: 0; }
+.account-cluster .button-small { padding: 0 11px; }
+.account-cluster .account-cluster-identity { border-left: 1px solid var(--line); }
 .button-primary { color: #fffaf4; background: var(--accent); }
 .button-secondary { border: 1px solid var(--line); color: var(--ink); background: transparent; }
 .button-ghost, .button-icon { color: var(--muted); background: transparent; }
@@ -202,6 +247,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
 @media (hover: hover) and (pointer: fine) {
   .button-primary:hover { background: var(--accent-dark); }
   .button-secondary:hover, .button-icon:hover, .dialog-close:hover { background: rgba(37, 55, 47, 0.055); }
+  .account-cluster-settings:hover,
+  .account-cluster-identity.button:hover { background: rgba(37, 55, 47, 0.055); }
   .task-row:hover .task-delete { opacity: 1; }
   .task-delete:hover { color: var(--accent-dark); background: rgba(231, 111, 81, 0.08); }
   .settings-row:hover .settings-icon { background: #e6eae2; }
@@ -218,8 +265,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid rgba(231, 111, 81
   .app-shell { display: flex; width: 100%; height: 100dvh; flex-direction: column; padding: max(10px, env(safe-area-inset-top)) 12px calc(78px + env(safe-area-inset-bottom)); }
   .app-header { height: 44px; flex: 0 0 auto; padding: 0 2px; }
   .offline-status { display: none; }
+  .account-cluster .settings-desktop,
   .settings-desktop { display: none; }
-  .settings-mobile { display: block; }
+  .account-cluster .settings-mobile,
+  .settings-mobile { display: flex; }
   .page-intro { display: none; }
   .workspace-grid { display: block; min-height: 0; flex: 1; margin-top: 10px; }
   .focus-card, .tasks-card { height: 100%; min-height: 0; padding: 18px; border-radius: 20px; }

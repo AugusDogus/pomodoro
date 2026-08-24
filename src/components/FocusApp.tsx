@@ -5,6 +5,8 @@ import {
   Cloud,
   CloudOff,
   ListTodo,
+  LogIn,
+  LogOut,
   Minus,
   Pause,
   Play,
@@ -19,82 +21,55 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  durationSeconds,
+  firstName,
+  localDateKey,
+  MAX_BREAK_MINUTES,
+  MAX_FOCUS_MINUTES,
+  parseStoredState,
+  touchState,
+  type Preferences,
+  type StoredAppState,
+  type Task,
+} from "../lib/app-state";
+import {
+  clearSyncHint,
+  initialSyncStatus,
+  pushRemoteState,
+  readSyncHint,
+  reconcileWithRemote,
+  STORAGE_KEY,
+  writeLocalState,
+  writeSyncHint,
+  type SyncStatus,
+} from "../lib/app-sync";
+import { signIn, signOut, useSession } from "../lib/auth-client";
+import {
   enableDesktopAlerts,
   messageForPermissionResult,
   showDesktopAlert,
   timerAlertCopy,
   type NotificationPermissionResult,
 } from "../lib/notifications";
-import { formatTime, progressFor, remainingFromEnd, TIMER_SECONDS, type TimerMode } from "../lib/timer";
+import { readCachedUser, signedInUser, toSessionUser, writeCachedUser, type SessionUser } from "../lib/session-user";
+import { formatTime, progressFor, remainingFromEnd, type TimerMode } from "../lib/timer";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogTitle, DialogTrigger } from "./ui/dialog";
 import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerTitle, DrawerTrigger } from "./ui/drawer";
 
-type Task = {
-  id: string;
-  title: string;
-  completed: boolean;
-  pomodoros: number;
-};
-
 type TimerStatus = "idle" | "running" | "paused";
 type MobileView = "timer" | "tasks";
-
-type Preferences = {
-  sound: boolean;
-  notifications: boolean;
-  autoStartBreaks: boolean;
-  focusMinutes: number;
-  breakMinutes: number;
-};
-
 type AlertIssue = Exclude<NotificationPermissionResult, { status: "granted" }>;
-
-type StoredAppState = {
-  tasks: Task[];
-  selectedTaskId: string | null;
-  completedSessions: number;
-  sessionDate: string;
-  preferences: Preferences;
-};
 
 type InstallPromptEvent = Event & {
   prompt: () => Promise<void>;
   userChoice: Promise<{ outcome: "accepted" | "dismissed" }>;
 };
 
-const STORAGE_KEY = "pomodoro.study-state.v1";
 const INSTALL_DISMISSED_KEY = "pomodoro.install-dismissed.v1";
 const CIRCLE_RADIUS = 148;
 const CIRCLE_LENGTH = 2 * Math.PI * CIRCLE_RADIUS;
-const MAX_FOCUS_MINUTES = 120;
-const MAX_BREAK_MINUTES = 60;
-
-function localDateKey(): string {
-  const today = new Date();
-  return [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
-}
-
-function defaultState(): StoredAppState {
-  return {
-    tasks: [],
-    selectedTaskId: null,
-    completedSessions: 0,
-    sessionDate: localDateKey(),
-    preferences: {
-      sound: true,
-      notifications: false,
-      autoStartBreaks: false,
-      focusMinutes: TIMER_SECONDS.focus / 60,
-      breakMinutes: TIMER_SECONDS.break / 60,
-    },
-  };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
 
 function isInstallPromptEvent(event: Event): event is InstallPromptEvent {
   return (
@@ -105,66 +80,12 @@ function isInstallPromptEvent(event: Event): event is InstallPromptEvent {
   );
 }
 
-function isTask(value: unknown): value is Task {
-  return (
-    isRecord(value) &&
-    typeof value.id === "string" &&
-    typeof value.title === "string" &&
-    typeof value.completed === "boolean" &&
-    typeof value.pomodoros === "number"
-  );
-}
-
-function parseDuration(value: unknown, fallback: number, maximum: number): number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 1 && value <= maximum
-    ? value
-    : fallback;
-}
-
-function durationSeconds(preferences: Preferences, mode: TimerMode): number {
-  return (mode === "focus" ? preferences.focusMinutes : preferences.breakMinutes) * 60;
-}
-
-function parseStoredState(raw: string | null): StoredAppState {
-  if (raw === null) return defaultState();
-
-  try {
-    const value: unknown = JSON.parse(raw);
-    if (!isRecord(value)) return defaultState();
-    if (!Array.isArray(value.tasks) || !value.tasks.every(isTask)) return defaultState();
-    if (value.selectedTaskId !== null && typeof value.selectedTaskId !== "string") return defaultState();
-    if (typeof value.completedSessions !== "number") return defaultState();
-    if (!isRecord(value.preferences)) return defaultState();
-    if (typeof value.preferences.sound !== "boolean" || typeof value.preferences.notifications !== "boolean") {
-      return defaultState();
-    }
-
-    const today = localDateKey();
-    const storedDate = typeof value.sessionDate === "string" ? value.sessionDate : today;
-
-    return {
-      tasks: value.tasks,
-      selectedTaskId: value.selectedTaskId,
-      completedSessions: storedDate === today ? value.completedSessions : 0,
-      sessionDate: today,
-      preferences: {
-        sound: value.preferences.sound,
-        notifications: value.preferences.notifications,
-        autoStartBreaks: typeof value.preferences.autoStartBreaks === "boolean" ? value.preferences.autoStartBreaks : false,
-        focusMinutes: parseDuration(value.preferences.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES),
-        breakMinutes: parseDuration(value.preferences.breakMinutes, TIMER_SECONDS.break / 60, MAX_BREAK_MINUTES),
-      },
-    };
-  } catch {
-    return defaultState();
-  }
-}
-
-function getGreeting(): string {
+function getGreeting(name: string | null): string {
   const hour = new Date().getHours();
-  if (hour < 12) return "Good morning, Alex.";
-  if (hour < 18) return "Good afternoon, Alex.";
-  return "Good evening, Alex.";
+  const suffix = name === null ? "." : `, ${name}.`;
+  if (hour < 12) return `Good morning${suffix}`;
+  if (hour < 18) return `Good afternoon${suffix}`;
+  return `Good evening${suffix}`;
 }
 
 function playChime(): void {
@@ -187,8 +108,13 @@ function playChime(): void {
 }
 
 export default function FocusApp() {
+  const session = useSession();
   const [storedState, setStoredState] = useState<StoredAppState>(() =>
     parseStoredState(window.localStorage.getItem(STORAGE_KEY)),
+  );
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(() => readCachedUser());
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>(() =>
+    initialSyncStatus(navigator.onLine, readSyncHint()),
   );
   const [mode, setMode] = useState<TimerMode>("focus");
   const [mobileView, setMobileView] = useState<MobileView>("timer");
@@ -204,6 +130,15 @@ export default function FocusApp() {
   const [shouldAutoStartBreak, setShouldAutoStartBreak] = useState(false);
   const [alertIssue, setAlertIssue] = useState<AlertIssue | null>(null);
   const completedRef = useRef(false);
+  const reconciledRef = useRef(false);
+  const guestStartRef = useRef(false);
+  const latestState = useRef(storedState);
+  latestState.current = storedState;
+  const account = signedInUser(sessionUser);
+
+  function updateState(updater: (current: StoredAppState) => StoredAppState) {
+    setStoredState((current) => touchState(updater(current)));
+  }
 
   const selectedTask = useMemo(
     () => storedState.tasks.find((task) => task.id === storedState.selectedTaskId) ?? null,
@@ -216,12 +151,83 @@ export default function FocusApp() {
   const circleOffset = CIRCLE_LENGTH * (1 - timerProgress);
 
   useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(storedState));
-  }, [storedState]);
+    if (session.isPending) return;
+    const user = session.data?.user;
+    if (user === undefined) {
+      if (!isOnline || guestStartRef.current) return;
+      guestStartRef.current = true;
+      void signIn.anonymous().finally(() => {
+        guestStartRef.current = false;
+      });
+      return;
+    }
+    const nextUser = toSessionUser(user);
+    writeCachedUser(nextUser);
+    setSessionUser((current) => {
+      if (current === null || current.id !== nextUser.id || current.kind !== nextUser.kind) {
+        reconciledRef.current = false;
+      }
+      return nextUser;
+    });
+  }, [isOnline, session.data, session.isPending]);
+
+  useEffect(() => {
+    writeLocalState(storedState);
+    if (sessionUser === null || !reconciledRef.current || !isOnline) return;
+    const handle = window.setTimeout(() => {
+      void pushRemoteState(storedState).then((result) => {
+        switch (result.kind) {
+          case "ok":
+            setSyncStatus({ kind: "synced" });
+            return;
+          case "offline":
+            setSyncStatus({ kind: "offline" });
+            return;
+          case "unauthenticated":
+            setSyncStatus({ kind: "local" });
+            return;
+          case "empty":
+          case "error":
+            setSyncStatus({
+              kind: "error",
+              message: result.kind === "error" ? result.message : "Cloud save failed. Changes are still on this device.",
+            });
+            return;
+          default: {
+            const _exhaustive: never = result;
+            return _exhaustive;
+          }
+        }
+      });
+    }, 400);
+    return () => window.clearTimeout(handle);
+  }, [isOnline, sessionUser, storedState]);
+
+  useEffect(() => {
+    writeSyncHint(syncStatus);
+  }, [syncStatus]);
+
+  useEffect(() => {
+    if (sessionUser === null || !isOnline) return;
+    let cancelled = false;
+    void reconcileWithRemote(latestState.current).then((result) => {
+      if (cancelled) return;
+      reconciledRef.current = true;
+      setStoredState(result.state);
+      writeLocalState(result.state);
+      setSyncStatus(result.status);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOnline, sessionUser]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSyncStatus({ kind: "offline" });
+    };
     const handleInstallPrompt = (event: Event) => {
       event.preventDefault();
       if (isInstallPromptEvent(event)) {
@@ -255,7 +261,7 @@ export default function FocusApp() {
     }
 
     if (mode === "focus") {
-      setStoredState((current) => ({
+      updateState((current) => ({
         ...current,
         completedSessions: current.sessionDate === localDateKey() ? current.completedSessions + 1 : 1,
         sessionDate: localDateKey(),
@@ -333,7 +339,7 @@ export default function FocusApp() {
     const maximum = targetMode === "focus" ? MAX_FOCUS_MINUTES : MAX_BREAK_MINUTES;
     const nextMinutes = Math.min(maximum, Math.max(1, storedState.preferences[preferenceKey] + delta));
 
-    setStoredState((current) => ({
+    updateState((current) => ({
       ...current,
       preferences: { ...current.preferences, [preferenceKey]: nextMinutes },
     }));
@@ -345,7 +351,7 @@ export default function FocusApp() {
     const title = taskTitle.trim();
     if (title.length === 0) return;
     const task: Task = { id: crypto.randomUUID(), title, completed: false, pomodoros: 0 };
-    setStoredState((current) => ({
+    updateState((current) => ({
       ...current,
       tasks: [...current.tasks, task],
       selectedTaskId: current.selectedTaskId ?? task.id,
@@ -354,7 +360,7 @@ export default function FocusApp() {
   }
 
   function toggleTask(taskId: string) {
-    setStoredState((current) => ({
+    updateState((current) => ({
       ...current,
       tasks: current.tasks.map((task) =>
         task.id === taskId ? { ...task, completed: !task.completed } : task,
@@ -363,7 +369,7 @@ export default function FocusApp() {
   }
 
   function deleteTask(taskId: string) {
-    setStoredState((current) => ({
+    updateState((current) => ({
       ...current,
       tasks: current.tasks.filter((task) => task.id !== taskId),
       selectedTaskId: current.selectedTaskId === taskId ? null : current.selectedTaskId,
@@ -371,14 +377,14 @@ export default function FocusApp() {
   }
 
   function selectTask(taskId: string) {
-    setStoredState((current) => ({ ...current, selectedTaskId: taskId }));
+    updateState((current) => ({ ...current, selectedTaskId: taskId }));
     setMobileView("timer");
   }
 
   async function toggleNotifications() {
     if (storedState.preferences.notifications) {
       setAlertIssue(null);
-      setStoredState((current) => ({
+      updateState((current) => ({
         ...current,
         preferences: { ...current.preferences, notifications: false },
       }));
@@ -389,7 +395,7 @@ export default function FocusApp() {
     switch (result.status) {
       case "granted":
         setAlertIssue(null);
-        setStoredState((current) => ({
+        updateState((current) => ({
           ...current,
           preferences: { ...current.preferences, notifications: true },
         }));
@@ -424,31 +430,60 @@ export default function FocusApp() {
       <header className="app-header">
         <div className="wordmark" aria-label="Pomodoro home">pom<span>.</span></div>
         <div className="header-actions">
-          <span className="offline-status" title={isOnline ? "Your progress is saved on this device" : "The app is available offline"}>
-            {isOnline ? <Cloud aria-hidden="true" size={15} /> : <CloudOff aria-hidden="true" size={15} />}
-            {isOnline ? "Saved locally" : "Working offline"}
+          <span
+            className="offline-status"
+            data-quiet={syncStatus.kind === "pending"}
+            title={syncStatus.kind === "pending" ? undefined : syncStatusLabel(syncStatus, isOnline)}
+          >
+            {isOnline && syncStatus.kind !== "offline" ? <Cloud aria-hidden="true" size={15} /> : <CloudOff aria-hidden="true" size={15} />}
+            {syncStatusLabel(syncStatus, isOnline)}
           </span>
-          <SettingsControl
-            alertIssue={alertIssue}
-            durationLocked={status === "running"}
-            onAdjustDuration={adjustDuration}
-            onToggleAutoStartBreaks={() => setStoredState((current) => ({
-              ...current,
-              preferences: { ...current.preferences, autoStartBreaks: !current.preferences.autoStartBreaks },
-            }))}
-            onToggleNotifications={toggleNotifications}
-            onToggleSound={() => setStoredState((current) => ({
-              ...current,
-              preferences: { ...current.preferences, sound: !current.preferences.sound },
-            }))}
-            preferences={storedState.preferences}
-          />
+          <div className="account-cluster">
+            <SettingsControl
+              alertIssue={alertIssue}
+              durationLocked={status === "running"}
+              onAdjustDuration={adjustDuration}
+              onSignIn={() => void signIn.social({ provider: "discord", callbackURL: "/" })}
+              onSignOut={() => {
+                clearSyncHint();
+                void signOut();
+              }}
+              onToggleAutoStartBreaks={() => updateState((current) => ({
+                ...current,
+                preferences: { ...current.preferences, autoStartBreaks: !current.preferences.autoStartBreaks },
+              }))}
+              onToggleNotifications={toggleNotifications}
+              onToggleSound={() => updateState((current) => ({
+                ...current,
+                preferences: { ...current.preferences, sound: !current.preferences.sound },
+              }))}
+              preferences={storedState.preferences}
+              sessionUser={sessionUser}
+              syncStatus={syncStatus}
+            />
+            {account === null ? (
+              <Button
+                className="account-cluster-identity"
+                onClick={() => void signIn.social({ provider: "discord", callbackURL: "/" })}
+                size="small"
+                variant="ghost"
+              >
+                <LogIn aria-hidden="true" size={14} />
+                Sign in
+              </Button>
+            ) : (
+              <span className="account-cluster-identity">
+                {account.image !== null && <img alt="" src={account.image} />}
+                {firstName(account.name)}
+              </span>
+            )}
+          </div>
         </div>
       </header>
 
       <section className="page-intro">
         <div>
-          <h1>{getGreeting()}</h1>
+          <h1>{getGreeting(account === null ? null : firstName(account.name))}</h1>
         </div>
       </section>
 
@@ -584,11 +619,36 @@ type SettingsControlProps = {
   alertIssue: AlertIssue | null;
   durationLocked: boolean;
   onAdjustDuration: (mode: TimerMode, delta: number) => void;
+  onSignIn: () => void;
+  onSignOut: () => void;
   onToggleAutoStartBreaks: () => void;
   onToggleNotifications: () => void;
   onToggleSound: () => void;
   preferences: Preferences;
+  sessionUser: SessionUser | null;
+  syncStatus: SyncStatus;
 };
+
+function syncStatusLabel(status: SyncStatus, isOnline: boolean): string {
+  switch (status.kind) {
+    case "pending":
+      return "";
+    case "synced":
+      return "Synced";
+    case "syncing":
+      return "Syncing";
+    case "offline":
+      return "Working offline";
+    case "local":
+      return isOnline ? "Saved locally" : "Working offline";
+    case "error":
+      return "Saved locally";
+    default: {
+      const _exhaustive: never = status;
+      return _exhaustive;
+    }
+  }
+}
 
 function SettingsControl(props: SettingsControlProps) {
   return (
@@ -596,8 +656,8 @@ function SettingsControl(props: SettingsControlProps) {
       <div className="settings-desktop">
         <Dialog>
           <DialogTrigger asChild>
-            <Button aria-label="Open settings" size="icon" variant="icon">
-              <Settings2 aria-hidden="true" size={18} />
+            <Button aria-label="Open settings" className="account-cluster-settings" size="icon" variant="ghost">
+              <Settings2 aria-hidden="true" size={16} />
             </Button>
           </DialogTrigger>
           <DialogContent>
@@ -610,8 +670,8 @@ function SettingsControl(props: SettingsControlProps) {
       <div className="settings-mobile">
         <Drawer>
           <DrawerTrigger asChild>
-            <Button aria-label="Open settings" size="icon" variant="icon">
-              <Settings2 aria-hidden="true" size={18} />
+            <Button aria-label="Open settings" className="account-cluster-settings" size="icon" variant="ghost">
+              <Settings2 aria-hidden="true" size={16} />
             </Button>
           </DrawerTrigger>
           <DrawerContent>
@@ -634,7 +694,19 @@ function SettingsControl(props: SettingsControlProps) {
   );
 }
 
-function SettingsBody({ alertIssue, durationLocked, onAdjustDuration, onToggleAutoStartBreaks, onToggleNotifications, onToggleSound, preferences }: SettingsControlProps) {
+function SettingsBody({
+  alertIssue,
+  durationLocked,
+  onAdjustDuration,
+  onSignIn,
+  onSignOut,
+  onToggleAutoStartBreaks,
+  onToggleNotifications,
+  onToggleSound,
+  preferences,
+  sessionUser,
+  syncStatus,
+}: SettingsControlProps) {
   const alertMessage = alertIssue === null ? null : messageForPermissionResult(alertIssue);
   return (
     <>
@@ -677,9 +749,26 @@ function SettingsBody({ alertIssue, durationLocked, onAdjustDuration, onToggleAu
             <p>{alertMessage}</p>
           </div>
         )}
+        {sessionUser?.kind === "signed-in" ? (
+          <button className="settings-row" onClick={onSignOut} type="button">
+            <span className="settings-icon"><LogOut aria-hidden="true" size={18} /></span>
+            <span><strong>Sign out</strong><small>{sessionUser.name}</small></span>
+          </button>
+        ) : (
+          <button className="settings-row" onClick={onSignIn} type="button">
+            <span className="settings-icon"><LogIn aria-hidden="true" size={18} /></span>
+            <span><strong>Sign in with Discord</strong><small>Keep your current tasks on your account</small></span>
+          </button>
+        )}
         <div className="settings-note">
           <Cloud aria-hidden="true" size={17} />
-          <p>Tasks are stored on this device and available offline.</p>
+          <p>
+            {syncStatus.kind === "error"
+              ? syncStatus.message
+              : sessionUser?.kind === "signed-in"
+                ? "Your tasks stay on this device and sync when you're online."
+                : "Tasks stay on this device and sync as a guest. Sign in with Discord to keep them on your account."}
+          </p>
         </div>
     </>
   );
