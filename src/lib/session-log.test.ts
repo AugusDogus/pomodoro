@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+  createLegacySessions,
   createSessionLogEntry,
+  entryDateKey,
   groupSessionLog,
   msUntilNextLocalMidnight,
   parseSessionLog,
   pomodoroCountLabel,
+  seedLegacySessions,
   sessionDayLabel,
   sessionsOnDate,
   todayPomodoroLabel,
@@ -23,6 +26,22 @@ describe("session log", () => {
     expect(parseSessionLog(undefined)).toEqual([]);
     expect(parseSessionLog("nope")).toEqual([]);
     expect(parseSessionLog([entry, { id: "bad" }])).toEqual([entry]);
+  });
+
+  test("parseSessionLog derives the day from completedAt and ignores a stored dateKey", () => {
+    const completedAt = Date.parse("2026-08-24T22:00:00");
+    expect(
+      parseSessionLog([
+        {
+          id: "old",
+          completedAt,
+          dateKey: "1999-01-01",
+          minutes: 25,
+          task: null,
+        },
+      ]),
+    ).toEqual([createSessionLogEntry({ id: "old", completedAt, minutes: 25, task: null })]);
+    expect(entryDateKey(createSessionLogEntry({ id: "old", completedAt, minutes: 25, task: null }))).toBe("2026-08-24");
   });
 
   test("groupSessionLog orders days and sessions newest first", () => {
@@ -46,8 +65,8 @@ describe("session log", () => {
     });
 
     expect(groupSessionLog([older, morning, afternoon])).toEqual([
-      { dateKey: afternoon.dateKey, entries: [afternoon, morning] },
-      { dateKey: older.dateKey, entries: [older] },
+      { dateKey: entryDateKey(afternoon), entries: [afternoon, morning] },
+      { dateKey: entryDateKey(older), entries: [older] },
     ]);
   });
 
@@ -65,7 +84,7 @@ describe("session log", () => {
       task: null,
     });
 
-    expect(sessionsOnDate([today, yesterday], today.dateKey)).toEqual([today]);
+    expect(sessionsOnDate([today, yesterday], entryDateKey(today))).toEqual([today]);
   });
 
   test("sessionDayLabel names today and yesterday", () => {
@@ -87,7 +106,7 @@ describe("session log", () => {
     expect(todayPomodoroLabel(3)).toBe("3 pomodoros today");
   });
 
-  test("todaysPomodoroCount prefers the log and falls back to the old daily counter", () => {
+  test("todaysPomodoroCount reads only the log", () => {
     const today = createSessionLogEntry({
       id: "today",
       completedAt: Date.parse("2026-08-24T10:00:00"),
@@ -101,30 +120,37 @@ describe("session log", () => {
       task: null,
     });
 
+    expect(todaysPomodoroCount([today, yesterday], entryDateKey(today))).toBe(1);
+    expect(todaysPomodoroCount([], "2026-08-24")).toBe(0);
+  });
+
+  test("seedLegacySessions writes leftover counter rows onto an empty day", () => {
     expect(
-      todaysPomodoroCount({
-        sessionLog: [today, yesterday],
+      seedLegacySessions({
+        sessionLog: [],
+        completedSessions: 3,
+        sessionDate: "2026-08-24",
+        minutes: 25,
+      }),
+    ).toEqual(createLegacySessions({ dateKey: "2026-08-24", count: 3, minutes: 25 }));
+  });
+
+  test("seedLegacySessions does not add leftovers once that day has log rows", () => {
+    const recorded = createSessionLogEntry({
+      id: "s1",
+      completedAt: Date.parse("2026-08-24T10:00:00"),
+      minutes: 25,
+      task: null,
+    });
+
+    expect(
+      seedLegacySessions({
+        sessionLog: [recorded],
         completedSessions: 9,
         sessionDate: "2026-08-24",
-        today: today.dateKey,
+        minutes: 25,
       }),
-    ).toBe(1);
-    expect(
-      todaysPomodoroCount({
-        sessionLog: [],
-        completedSessions: 4,
-        sessionDate: "2026-08-24",
-        today: "2026-08-24",
-      }),
-    ).toBe(4);
-    expect(
-      todaysPomodoroCount({
-        sessionLog: [],
-        completedSessions: 4,
-        sessionDate: "2026-08-23",
-        today: "2026-08-24",
-      }),
-    ).toBe(0);
+    ).toEqual([recorded]);
   });
 
   test("msUntilNextLocalMidnight is the remaining time before the next local day", () => {

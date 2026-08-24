@@ -3,13 +3,22 @@ export type SessionTask = {
   title: string;
 };
 
-export type SessionLogEntry = {
+export type RecordedSession = {
+  kind: "recorded";
   id: string;
   completedAt: number;
-  dateKey: string;
   minutes: number;
   task: SessionTask | null;
 };
+
+export type LegacySession = {
+  kind: "legacy";
+  id: string;
+  dateKey: string;
+  minutes: number;
+};
+
+export type SessionLogEntry = RecordedSession | LegacySession;
 
 export type SessionLogDay = {
   dateKey: string;
@@ -21,45 +30,86 @@ export function dateKeyFromMs(ms: number): string {
   return [date.getFullYear(), String(date.getMonth() + 1).padStart(2, "0"), String(date.getDate()).padStart(2, "0")].join("-");
 }
 
+export function entryDateKey(entry: SessionLogEntry): string {
+  switch (entry.kind) {
+    case "recorded":
+      return dateKeyFromMs(entry.completedAt);
+    case "legacy":
+      return entry.dateKey;
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
 export function createSessionLogEntry(input: {
   id: string;
   completedAt: number;
   minutes: number;
   task: SessionTask | null;
-}): SessionLogEntry {
+}): RecordedSession {
   return {
+    kind: "recorded",
     id: input.id,
     completedAt: input.completedAt,
-    dateKey: dateKeyFromMs(input.completedAt),
     minutes: input.minutes,
     task: input.task === null ? null : { id: input.task.id, title: input.task.title },
   };
 }
 
-function isSessionTask(value: unknown): value is SessionTask {
-  return isPlainRecord(value) && typeof value.id === "string" && typeof value.title === "string";
+export function createLegacySessions(input: {
+  dateKey: string;
+  count: number;
+  minutes: number;
+}): LegacySession[] {
+  if (!Number.isInteger(input.count) || input.count < 1) return [];
+  return Array.from({ length: input.count }, (_, index) => ({
+    kind: "legacy",
+    id: `legacy:${input.dateKey}:${index}`,
+    dateKey: input.dateKey,
+    minutes: input.minutes,
+  }));
+}
+
+export function seedLegacySessions(input: {
+  sessionLog: SessionLogEntry[];
+  completedSessions: number;
+  sessionDate: string;
+  minutes: number;
+}): SessionLogEntry[] {
+  if (!isDateKey(input.sessionDate)) return input.sessionLog;
+  if (sessionsOnDate(input.sessionLog, input.sessionDate).length > 0) return input.sessionLog;
+  return mergeSessionLog(
+    input.sessionLog,
+    createLegacySessions({
+      dateKey: input.sessionDate,
+      count: input.completedSessions,
+      minutes: input.minutes,
+    }),
+  );
 }
 
 export function isSessionLogEntry(value: unknown): value is SessionLogEntry {
-  if (!isPlainRecord(value)) return false;
-  if (typeof value.id !== "string" || value.id.length === 0) return false;
-  if (typeof value.completedAt !== "number" || !Number.isFinite(value.completedAt)) return false;
-  if (typeof value.dateKey !== "string" || !isDateKey(value.dateKey)) return false;
-  if (typeof value.minutes !== "number" || !Number.isInteger(value.minutes) || value.minutes < 1) return false;
-  return value.task === null || isSessionTask(value.task);
+  return parseSessionLogEntry(value) !== null;
 }
 
 export function parseSessionLog(value: unknown): SessionLogEntry[] {
   if (value === undefined) return [];
   if (!Array.isArray(value)) return [];
-  return value.filter(isSessionLogEntry);
+  const entries: SessionLogEntry[] = [];
+  for (const item of value) {
+    const entry = parseSessionLogEntry(item);
+    if (entry !== null) entries.push(entry);
+  }
+  return entries;
 }
 
 export function mergeSessionLog(left: SessionLogEntry[], right: SessionLogEntry[]): SessionLogEntry[] {
   const byId = new Map<string, SessionLogEntry>();
   for (const entry of right) byId.set(entry.id, entry);
   for (const entry of left) byId.set(entry.id, entry);
-  return [...byId.values()].sort((a, b) => a.completedAt - b.completedAt);
+  return [...byId.values()].sort((a, b) => entrySortKey(a) - entrySortKey(b));
 }
 
 export function sameSessionLog(left: SessionLogEntry[], right: SessionLogEntry[]): boolean {
@@ -74,13 +124,14 @@ export function sameSessionLog(left: SessionLogEntry[], right: SessionLogEntry[]
 export function groupSessionLog(entries: SessionLogEntry[]): SessionLogDay[] {
   const groups: SessionLogDay[] = [];
   const indexByDate = new Map<string, number>();
-  const newestFirst = [...entries].sort((left, right) => right.completedAt - left.completedAt);
+  const newestFirst = [...entries].sort((left, right) => entrySortKey(right) - entrySortKey(left));
 
   for (const entry of newestFirst) {
-    const existing = indexByDate.get(entry.dateKey);
+    const dateKey = entryDateKey(entry);
+    const existing = indexByDate.get(dateKey);
     if (existing === undefined) {
-      indexByDate.set(entry.dateKey, groups.length);
-      groups.push({ dateKey: entry.dateKey, entries: [entry] });
+      indexByDate.set(dateKey, groups.length);
+      groups.push({ dateKey, entries: [entry] });
       continue;
     }
     const group = groups[existing];
@@ -92,7 +143,7 @@ export function groupSessionLog(entries: SessionLogEntry[]): SessionLogDay[] {
 }
 
 export function sessionsOnDate(entries: SessionLogEntry[], dateKey: string): SessionLogEntry[] {
-  return entries.filter((entry) => entry.dateKey === dateKey);
+  return entries.filter((entry) => entryDateKey(entry) === dateKey);
 }
 
 export function sessionDayLabel(dateKey: string, today: string): string {
@@ -120,14 +171,8 @@ export function todayPomodoroLabel(count: number): string {
   return count === 0 ? "No pomodoros yet today" : `${pomodoroCountLabel(count)} today`;
 }
 
-export function todaysPomodoroCount(input: {
-  sessionLog: SessionLogEntry[];
-  completedSessions: number;
-  sessionDate: string;
-  today: string;
-}): number {
-  if (input.sessionLog.length > 0) return sessionsOnDate(input.sessionLog, input.today).length;
-  return input.sessionDate === input.today ? input.completedSessions : 0;
+export function todaysPomodoroCount(sessionLog: SessionLogEntry[], today: string): number {
+  return sessionsOnDate(sessionLog, today).length;
 }
 
 export function msUntilNextLocalMidnight(now = Date.now()): number {
@@ -136,18 +181,69 @@ export function msUntilNextLocalMidnight(now = Date.now()): number {
   return Math.max(1, next.getTime() - now);
 }
 
+function parseSessionLogEntry(value: unknown): SessionLogEntry | null {
+  if (!isPlainRecord(value)) return null;
+  if (value.kind === "legacy") {
+    if (typeof value.id !== "string" || value.id.length === 0) return null;
+    if (typeof value.dateKey !== "string" || !isDateKey(value.dateKey)) return null;
+    if (typeof value.minutes !== "number" || !Number.isInteger(value.minutes) || value.minutes < 1) return null;
+    return { kind: "legacy", id: value.id, dateKey: value.dateKey, minutes: value.minutes };
+  }
+  if (value.kind !== undefined && value.kind !== "recorded") return null;
+  if (typeof value.id !== "string" || value.id.length === 0) return null;
+  if (typeof value.completedAt !== "number" || !Number.isFinite(value.completedAt)) return null;
+  if (typeof value.minutes !== "number" || !Number.isInteger(value.minutes) || value.minutes < 1) return null;
+  if (value.task === null) {
+    return createSessionLogEntry({
+      id: value.id,
+      completedAt: value.completedAt,
+      minutes: value.minutes,
+      task: null,
+    });
+  }
+  if (!isSessionTask(value.task)) return null;
+  return createSessionLogEntry({
+    id: value.id,
+    completedAt: value.completedAt,
+    minutes: value.minutes,
+    task: value.task,
+  });
+}
+
+function entrySortKey(entry: SessionLogEntry): number {
+  switch (entry.kind) {
+    case "recorded":
+      return entry.completedAt;
+    case "legacy":
+      return parseDateKey(entry.dateKey)?.getTime() ?? 0;
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
+}
+
 function sameSessionLogEntry(left: SessionLogEntry, right: SessionLogEntry): boolean {
-  return (
-    left.completedAt === right.completedAt &&
-    left.dateKey === right.dateKey &&
-    left.minutes === right.minutes &&
-    sameSessionTask(left.task, right.task)
-  );
+  if (left.kind === "recorded" && right.kind === "recorded") {
+    return (
+      left.completedAt === right.completedAt &&
+      left.minutes === right.minutes &&
+      sameSessionTask(left.task, right.task)
+    );
+  }
+  if (left.kind === "legacy" && right.kind === "legacy") {
+    return left.dateKey === right.dateKey && left.minutes === right.minutes;
+  }
+  return false;
 }
 
 function sameSessionTask(left: SessionTask | null, right: SessionTask | null): boolean {
   if (left === null || right === null) return left === right;
   return left.id === right.id && left.title === right.title;
+}
+
+function isSessionTask(value: unknown): value is SessionTask {
+  return isPlainRecord(value) && typeof value.id === "string" && typeof value.title === "string";
 }
 
 function isDateKey(value: string): boolean {

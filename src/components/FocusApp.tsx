@@ -153,12 +153,7 @@ export default function FocusApp() {
     [storedState.selectedTaskId, storedState.tasks],
   );
   const todayKey = useTodayKey();
-  const todayCount = todaysPomodoroCount({
-    sessionLog: storedState.sessionLog,
-    completedSessions: storedState.completedSessions,
-    sessionDate: storedState.sessionDate,
-    today: todayKey,
-  });
+  const todayCount = todaysPomodoroCount(storedState.sessionLog, todayKey);
   const completedTasks = storedState.tasks.filter((task) => task.completed).length;
   const taskProgress = storedState.tasks.length === 0 ? 0 : completedTasks / storedState.tasks.length;
   const totalSeconds = durationSeconds(storedState.preferences, mode);

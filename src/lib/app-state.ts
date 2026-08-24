@@ -4,7 +4,9 @@ import {
   mergeSessionLog,
   parseSessionLog,
   sameSessionLog,
-  todaysPomodoroCount,
+  seedLegacySessions,
+  sessionsOnDate,
+  type RecordedSession,
   type SessionLogEntry,
 } from "./session-log";
 import { TIMER_SECONDS, type TimerMode } from "./timer";
@@ -107,24 +109,25 @@ export function parseAppState(value: unknown): StoredAppState {
 
   const today = localDateKey();
   const storedDate = typeof value.sessionDate === "string" ? value.sessionDate : today;
-  const sessionLog = parseSessionLog(value.sessionLog);
+  const focusMinutes = parseDuration(value.preferences.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES);
+  const sessionLog = seedLegacySessions({
+    sessionLog: parseSessionLog(value.sessionLog),
+    completedSessions: value.completedSessions,
+    sessionDate: storedDate,
+    minutes: focusMinutes,
+  });
 
   return {
     tasks: value.tasks,
     selectedTaskId: value.selectedTaskId,
-    completedSessions: todaysPomodoroCount({
-      sessionLog,
-      completedSessions: value.completedSessions,
-      sessionDate: storedDate,
-      today,
-    }),
+    completedSessions: sessionsOnDate(sessionLog, today).length,
     sessionDate: today,
     sessionLog,
     preferences: {
       sound: value.preferences.sound,
       notifications: value.preferences.notifications,
       autoStartBreaks: typeof value.preferences.autoStartBreaks === "boolean" ? value.preferences.autoStartBreaks : false,
-      focusMinutes: parseDuration(value.preferences.focusMinutes, TIMER_SECONDS.focus / 60, MAX_FOCUS_MINUTES),
+      focusMinutes,
       breakMinutes: parseDuration(value.preferences.breakMinutes, TIMER_SECONDS.break / 60, MAX_BREAK_MINUTES),
     },
     updatedAt: typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt) ? value.updatedAt : 0,
@@ -184,8 +187,6 @@ function preferredTask(prefer: "left" | "right", left: Task, right: Task): { new
 export function sameSnapshot(left: StoredAppState, right: StoredAppState): boolean {
   return (
     left.selectedTaskId === right.selectedTaskId &&
-    left.completedSessions === right.completedSessions &&
-    left.sessionDate === right.sessionDate &&
     sameSessionLog(left.sessionLog, right.sessionLog) &&
     left.preferences.sound === right.preferences.sound &&
     left.preferences.notifications === right.preferences.notifications &&
@@ -215,16 +216,22 @@ export function mergeAppState(left: StoredAppState, right: StoredAppState): Stor
     fallbacks: [left.selectedTaskId, right.selectedTaskId],
   });
   const today = localDateKey();
-  const sessionLog = mergeSessionLog(left.sessionLog, right.sessionLog);
+  const minutes = newer.preferences.focusMinutes;
+  const sessionLog = seedLegacySessions({
+    sessionLog: seedLegacySessions({
+      sessionLog: mergeSessionLog(left.sessionLog, right.sessionLog),
+      completedSessions: left.completedSessions,
+      sessionDate: left.sessionDate,
+      minutes,
+    }),
+    completedSessions: right.completedSessions,
+    sessionDate: right.sessionDate,
+    minutes,
+  });
   const merged: StoredAppState = {
     tasks,
     selectedTaskId,
-    completedSessions: todaysPomodoroCount({
-      sessionLog,
-      completedSessions: Math.max(left.completedSessions, right.completedSessions),
-      sessionDate: today,
-      today,
-    }),
+    completedSessions: sessionsOnDate(sessionLog, today).length,
     sessionDate: today,
     sessionLog,
     preferences: newer.preferences,
@@ -254,7 +261,7 @@ export function sessionEntryFromFocus(
     focusMinutes: number;
   },
   input: { id: string; completedAt: number },
-): SessionLogEntry {
+): RecordedSession {
   const selected = source.tasks.find((task) => task.id === source.selectedTaskId) ?? null;
   return createSessionLogEntry({
     id: input.id,
@@ -278,10 +285,21 @@ export function nextStateAfterFocusSession(
     },
     input,
   );
+  const sessionLog = [
+    ...seedLegacySessions({
+      sessionLog: prev.sessionLog,
+      completedSessions: prev.completedSessions,
+      sessionDate: prev.sessionDate,
+      minutes: prev.preferences.focusMinutes,
+    }),
+    entry,
+  ];
+  const today = localDateKey();
   return {
     ...prev,
-    sessionDate: entry.dateKey,
-    sessionLog: [...prev.sessionLog, entry],
+    completedSessions: sessionsOnDate(sessionLog, today).length,
+    sessionDate: today,
+    sessionLog,
     tasks: prev.tasks.map((task) =>
       entry.task !== null && task.id === entry.task.id ? { ...task, pomodoros: task.pomodoros + 1 } : task,
     ),

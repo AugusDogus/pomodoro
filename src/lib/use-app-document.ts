@@ -18,7 +18,7 @@ import {
   appDocFromState,
   completeFocusSession,
   emptyDirty,
-  healSessionLogConflicts,
+  ensureSessionLog,
   isDirty,
   stateFromAppDoc,
   type AppDoc,
@@ -110,25 +110,25 @@ export function useAppDocument(input: {
   useEffect(() => {
     if (url === null || doc === undefined) return;
     const currentId = documentIdFromUrl(url);
-    if (draft !== null || isDirty(dirtyRef.current)) {
-      changeDoc((current) => {
-        healSessionLogConflicts(current);
-        applyDirtyToAppDoc(current, dirtyRef.current);
-      });
+    const persistDraft = draft !== null || isDirty(dirtyRef.current);
+    const firstImport = importedFor.current !== currentId;
+    const adoptPeer = firstImport && seededId.current !== null && seededId.current !== currentId;
+    if (!persistDraft && !firstImport) return;
+
+    const incoming = latestRef.current;
+    changeDoc((current) => {
+      if (persistDraft) applyDirtyToAppDoc(current, dirtyRef.current);
+      ensureSessionLog(current);
+      if (adoptPeer) {
+        addMissingTasksToAppDoc(current, incoming);
+        addMissingSessionsToAppDoc(current, incoming);
+      }
+    });
+    if (persistDraft) {
       dirtyRef.current = emptyDirty();
       setDraft(null);
     }
-    if (importedFor.current === currentId) return;
-    importedFor.current = currentId;
-    changeDoc((current) => {
-      healSessionLogConflicts(current);
-    });
-    if (seededId.current === null || seededId.current === currentId) return;
-    const incoming = latestRef.current;
-    changeDoc((current) => {
-      addMissingTasksToAppDoc(current, incoming);
-      addMissingSessionsToAppDoc(current, incoming);
-    });
+    if (firstImport) importedFor.current = currentId;
   }, [changeDoc, doc, documentId, draft, url]);
 
   useEffect(() => {

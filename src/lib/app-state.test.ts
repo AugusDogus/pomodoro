@@ -9,7 +9,7 @@ import {
   parseStoredState,
   touchState,
 } from "./app-state";
-import { createSessionLogEntry } from "./session-log";
+import { createLegacySessions, createSessionLogEntry, todaysPomodoroCount } from "./session-log";
 
 describe("app state", () => {
   test("parses a valid stored snapshot", () => {
@@ -31,7 +31,10 @@ describe("app state", () => {
     );
 
     expect(state.tasks).toEqual([{ id: "t1", title: "Read", completed: false, pomodoros: 2 }]);
-    expect(state.sessionLog).toEqual([]);
+    expect(state.sessionLog).toEqual(
+      createLegacySessions({ dateKey: defaultState().sessionDate, count: 3, minutes: 30 }),
+    );
+    expect(state.completedSessions).toBe(3);
     expect(state.preferences.focusMinutes).toBe(30);
     expect(state.updatedAt).toBe(42);
   });
@@ -66,6 +69,32 @@ describe("app state", () => {
     });
 
     expect(state.completedSessions).toBe(1);
+    expect(state.sessionLog).toEqual([entry]);
+  });
+
+  test("completing the first logged session keeps today's leftover count", () => {
+    const today = defaultState().sessionDate;
+    const completedAt = Date.parse(`${today}T10:30:00`);
+    const prev = {
+      ...defaultState(),
+      selectedTaskId: "t1",
+      sessionDate: today,
+      completedSessions: 4,
+      tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 2 }],
+    };
+
+    const next = nextStateAfterFocusSession(prev, { id: "s1", completedAt });
+
+    expect(todaysPomodoroCount(next.sessionLog, today)).toBe(5);
+    expect(next.sessionLog).toEqual([
+      ...createLegacySessions({ dateKey: today, count: 4, minutes: 25 }),
+      createSessionLogEntry({
+        id: "s1",
+        completedAt,
+        minutes: 25,
+        task: { id: "t1", title: "Read" },
+      }),
+    ]);
   });
 
   test("falls back when stored JSON is invalid", () => {
@@ -200,9 +229,9 @@ describe("app state", () => {
 
     const next = nextStateAfterFocusSession(prev, { id: "s1", completedAt });
 
-    expect(next.completedSessions).toBe(1);
     expect(next.tasks[0]?.pomodoros).toBe(3);
     expect(next.sessionLog).toEqual([
+      ...createLegacySessions({ dateKey: "2026-08-24", count: 1, minutes: 25 }),
       createSessionLogEntry({
         id: "s1",
         completedAt,
@@ -210,6 +239,7 @@ describe("app state", () => {
         task: { id: "t1", title: "Read" },
       }),
     ]);
+    expect(todaysPomodoroCount(next.sessionLog, "2026-08-24")).toBe(2);
   });
 
   test("nextStateAfterFocusSession is a no-op when the entry id already exists", () => {

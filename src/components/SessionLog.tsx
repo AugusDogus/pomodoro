@@ -45,9 +45,7 @@ export function SessionLog({ entries, mobileActive, today, todayCount }: Session
               <ol>
                 {group.entries.map((entry) => (
                   <li key={entry.id}>
-                    <time dateTime={new Date(entry.completedAt).toISOString()}>{sessionTimeLabel(entry.completedAt)}</time>
-                    <span>{entry.task === null ? "No task" : entry.task.title}</span>
-                    <small>{entry.minutes}m</small>
+                    <SessionLogRow entry={entry} />
                   </li>
                 ))}
               </ol>
@@ -57,4 +55,29 @@ export function SessionLog({ entries, mobileActive, today, todayCount }: Session
       </div>
     </section>
   );
+}
+
+function SessionLogRow({ entry }: { entry: SessionLogEntry }) {
+  switch (entry.kind) {
+    case "recorded":
+      return (
+        <>
+          <time dateTime={new Date(entry.completedAt).toISOString()}>{sessionTimeLabel(entry.completedAt)}</time>
+          <span>{entry.task === null ? "No task" : entry.task.title}</span>
+          <small>{entry.minutes}m</small>
+        </>
+      );
+    case "legacy":
+      return (
+        <>
+          <span className="log-when">Earlier</span>
+          <span>Before this update</span>
+          <small>{entry.minutes}m</small>
+        </>
+      );
+    default: {
+      const _exhaustive: never = entry;
+      return _exhaustive;
+    }
+  }
 }

@@ -10,7 +10,7 @@ import {
   stateFromAppDoc,
 } from "./app-doc";
 import { defaultState } from "./app-state";
-import { createSessionLogEntry } from "./session-log";
+import { createLegacySessions, createSessionLogEntry, todaysPomodoroCount } from "./session-log";
 
 describe("app doc", () => {
   test("round-trips a stored snapshot without a clock", () => {
@@ -80,7 +80,6 @@ describe("app doc", () => {
     };
     const next = {
       ...prev,
-      completedSessions: 5,
       tasks: [
         { id: "shared", title: "Shared", completed: false, pomodoros: 2 },
         { id: "local", title: "Phone", completed: false, pomodoros: 0 },
@@ -90,7 +89,7 @@ describe("app doc", () => {
     accumulateDirty(dirty, prev, next);
     applyDirtyToAppDoc(doc, dirty);
 
-    expect(doc.completedSessions).toBe(5);
+    expect(doc.completedSessions).toBe(4);
     expect(doc.tasks.map((task) => [task.id, task.completed, task.pomodoros])).toEqual([
       ["remote", true, 2],
       ["shared", false, 2],
@@ -113,6 +112,7 @@ describe("app doc", () => {
     expect(doc.completedSessions).toBe(2);
     expect(doc.tasks[0]?.pomodoros).toBe(2);
     expect(doc.sessionLog).toEqual([
+      ...createLegacySessions({ dateKey: "2026-08-24", count: 2, minutes: 25 }),
       createSessionLogEntry({
         id: "s1",
         completedAt,
@@ -120,6 +120,7 @@ describe("app doc", () => {
         task: { id: "t1", title: "Read" },
       }),
     ]);
+    expect(todaysPomodoroCount(doc.sessionLog, "2026-08-24")).toBe(3);
   });
 
   test("completeFocusSession is a no-op when the entry id already exists", () => {

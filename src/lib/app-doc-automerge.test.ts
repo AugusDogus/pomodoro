@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import * as A from "@automerge/automerge/next";
 import {
   completeFocusSession,
-  healSessionLogConflicts,
+  ensureSessionLog,
   stateFromAppDoc,
   type AppDoc,
 } from "./app-doc";
@@ -36,7 +36,7 @@ describe("automerge session log", () => {
     expect(stateFromAppDoc(merged).sessionLog.map((entry) => entry.id).sort()).toEqual(["left", "right"]);
 
     const healed = A.change(merged, (doc) => {
-      healSessionLogConflicts(doc);
+      ensureSessionLog(doc);
     });
 
     expect(healed.sessionLog.map((entry) => entry.id).sort()).toEqual(["left", "right"]);

@@ -92,12 +92,7 @@ export function remoteStateFromStored(state: StoredAppState): RemoteAppState {
   return {
     tasks: state.tasks,
     selectedTaskId: state.selectedTaskId,
-    completedSessions: todaysPomodoroCount({
-      sessionLog: state.sessionLog,
-      completedSessions: state.completedSessions,
-      sessionDate: state.sessionDate,
-      today: localDateKey(),
-    }),
+    completedSessions: todaysPomodoroCount(state.sessionLog, localDateKey()),
     sessionDate: state.sessionDate,
     sound: state.preferences.sound,
     notifications: state.preferences.notifications,
