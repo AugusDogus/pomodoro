@@ -192,6 +192,10 @@ export default function FocusApp() {
       reconciledRef.current = true;
       return;
     }
+    if (remoteState.updatedAt < latestState.current.updatedAt) {
+      reconciledRef.current = true;
+      return;
+    }
     const merged = mergeRemoteState(latestState.current, remoteState);
     reconciledRef.current = true;
     if (sameSnapshot(merged, latestState.current) && merged.updatedAt === latestState.current.updatedAt) {

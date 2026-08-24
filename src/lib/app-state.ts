@@ -129,7 +129,7 @@ export function chooseSnapshot(
   return { kind: "local", state: local, shouldPush: false };
 }
 
-export function mergeTasks(left: Task[], right: Task[]): Task[] {
+export function mergeTasks(left: Task[], right: Task[], prefer: "left" | "right"): Task[] {
   const byId = new Map<string, Task>();
   for (const item of right) byId.set(item.id, item);
   for (const item of left) {
@@ -138,14 +138,28 @@ export function mergeTasks(left: Task[], right: Task[]): Task[] {
       byId.set(item.id, item);
       continue;
     }
+    const { newer, older } = preferredTask(prefer, item, prior);
     byId.set(item.id, {
       id: item.id,
-      title: item.title.length > 0 ? item.title : prior.title,
-      completed: prior.completed || item.completed,
+      title: newer.title.length > 0 ? newer.title : older.title,
+      completed: newer.completed,
       pomodoros: Math.max(prior.pomodoros, item.pomodoros),
     });
   }
   return [...byId.values()];
+}
+
+function preferredTask(prefer: "left" | "right", left: Task, right: Task): { newer: Task; older: Task } {
+  switch (prefer) {
+    case "left":
+      return { newer: left, older: right };
+    case "right":
+      return { newer: right, older: left };
+    default: {
+      const _exhaustive: never = prefer;
+      return _exhaustive;
+    }
+  }
 }
 
 export function sameSnapshot(left: StoredAppState, right: StoredAppState): boolean {
@@ -172,8 +186,9 @@ function sameTasks(left: Task[], right: Task[]): boolean {
 }
 
 export function mergeAppState(left: StoredAppState, right: StoredAppState): StoredAppState {
-  const tasks = mergeTasks(left.tasks, right.tasks);
-  const newer = left.updatedAt >= right.updatedAt ? left : right;
+  const prefer: "left" | "right" = left.updatedAt >= right.updatedAt ? "left" : "right";
+  const tasks = mergeTasks(left.tasks, right.tasks, prefer);
+  const newer = prefer === "left" ? left : right;
   const selectedTaskId = pickSelectedTaskId({
     tasks,
     preferred: newer.selectedTaskId,

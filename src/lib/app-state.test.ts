@@ -96,7 +96,41 @@ describe("app state", () => {
     };
 
     expect(mergeAppState(guest, existing).tasks).toEqual([
-      { id: "shared", title: "Read", completed: true, pomodoros: 4 },
+      { id: "shared", title: "Read chapter 2", completed: false, pomodoros: 4 },
+    ]);
+  });
+
+  test("mergeAppState lets a newer uncheck overwrite an older check", () => {
+    const local = {
+      ...defaultState(),
+      updatedAt: 20,
+      tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 1 }],
+    };
+    const remote = {
+      ...defaultState(),
+      updatedAt: 10,
+      tasks: [{ id: "t1", title: "Read", completed: true, pomodoros: 1 }],
+    };
+
+    expect(mergeAppState(local, remote).tasks).toEqual([
+      { id: "t1", title: "Read", completed: false, pomodoros: 1 },
+    ]);
+  });
+
+  test("mergeAppState lets a newer check overwrite an older uncheck", () => {
+    const local = {
+      ...defaultState(),
+      updatedAt: 10,
+      tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 1 }],
+    };
+    const remote = {
+      ...defaultState(),
+      updatedAt: 20,
+      tasks: [{ id: "t1", title: "Read", completed: true, pomodoros: 1 }],
+    };
+
+    expect(mergeAppState(local, remote).tasks).toEqual([
+      { id: "t1", title: "Read", completed: true, pomodoros: 1 },
     ]);
   });
 });
