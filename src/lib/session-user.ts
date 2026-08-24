@@ -10,14 +10,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function toSessionUser(user: {
   id: string;
-  name: string;
+  name?: string | null;
   image?: string | null;
   isAnonymous?: boolean | null;
 }): SessionUser {
   if (user.isAnonymous === true) {
     return { kind: "guest", id: user.id };
   }
-  return { kind: "signed-in", id: user.id, name: user.name, image: user.image ?? null };
+  return {
+    kind: "signed-in",
+    id: user.id,
+    name: typeof user.name === "string" && user.name.length > 0 ? user.name : "Discord",
+    image: user.image ?? null,
+  };
 }
 
 export function parseSessionUser(value: unknown): SessionUser | null {

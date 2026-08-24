@@ -2,12 +2,12 @@
 export const prerender = true;
 
 import Layout from "../layouts/Layout.astro";
-import FocusApp from "../components/FocusApp";
+import ConvexApp from "../components/ConvexApp";
 ---
 
 <Layout
   title="Pomodoro — Focus gently"
   description="A calm, offline-friendly to-do list and Pomodoro timer."
 >
-  <FocusApp client:only="react" />
+  <ConvexApp client:only="react" />
 </Layout>

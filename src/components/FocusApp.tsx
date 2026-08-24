@@ -19,7 +19,10 @@ import {
   VolumeX,
   X,
 } from "lucide-react";
+import { useAuthActions } from "@convex-dev/auth/react";
+import { useConvexAuth, useMutation, useQuery } from "convex/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { api } from "../../convex/_generated/api";
 import {
   durationSeconds,
   firstName,
@@ -27,6 +30,7 @@ import {
   MAX_BREAK_MINUTES,
   MAX_FOCUS_MINUTES,
   parseStoredState,
+  sameSnapshot,
   touchState,
   type Preferences,
   type StoredAppState,
@@ -35,15 +39,15 @@ import {
 import {
   clearSyncHint,
   initialSyncStatus,
-  pushRemoteState,
+  mergeRemoteState,
   readSyncHint,
-  reconcileWithRemote,
+  remoteStateFromStored,
   STORAGE_KEY,
+  storedStateFromRemote,
   writeLocalState,
   writeSyncHint,
   type SyncStatus,
 } from "../lib/app-sync";
-import { signIn, signOut, useSession } from "../lib/auth-client";
 import {
   enableDesktopAlerts,
   messageForPermissionResult,
@@ -51,7 +55,14 @@ import {
   timerAlertCopy,
   type NotificationPermissionResult,
 } from "../lib/notifications";
-import { readCachedUser, signedInUser, toSessionUser, writeCachedUser, type SessionUser } from "../lib/session-user";
+import {
+  clearCachedUser,
+  readCachedUser,
+  signedInUser,
+  toSessionUser,
+  writeCachedUser,
+  type SessionUser,
+} from "../lib/session-user";
 import { formatTime, progressFor, remainingFromEnd, type TimerMode } from "../lib/timer";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
@@ -108,7 +119,11 @@ function playChime(): void {
 }
 
 export default function FocusApp() {
-  const session = useSession();
+  const { isAuthenticated, isLoading } = useConvexAuth();
+  const { signIn, signOut } = useAuthActions();
+  const remoteUser = useQuery(api.users.current, isAuthenticated ? {} : "skip");
+  const remoteState = useQuery(api.appState.get, isAuthenticated ? {} : "skip");
+  const saveRemoteState = useMutation(api.appState.save);
   const [storedState, setStoredState] = useState<StoredAppState>(() =>
     parseStoredState(window.localStorage.getItem(STORAGE_KEY)),
   );
@@ -151,17 +166,17 @@ export default function FocusApp() {
   const circleOffset = CIRCLE_LENGTH * (1 - timerProgress);
 
   useEffect(() => {
-    if (session.isPending) return;
-    const user = session.data?.user;
-    if (user === undefined) {
+    if (isLoading) return;
+    if (!isAuthenticated) {
       if (!isOnline || guestStartRef.current) return;
       guestStartRef.current = true;
-      void signIn.anonymous().finally(() => {
+      void signIn("anonymous").finally(() => {
         guestStartRef.current = false;
       });
       return;
     }
-    const nextUser = toSessionUser(user);
+    if (remoteUser === undefined || remoteUser === null) return;
+    const nextUser = toSessionUser(remoteUser);
     writeCachedUser(nextUser);
     setSessionUser((current) => {
       if (current === null || current.id !== nextUser.id || current.kind !== nextUser.kind) {
@@ -169,58 +184,52 @@ export default function FocusApp() {
       }
       return nextUser;
     });
-  }, [isOnline, session.data, session.isPending]);
+  }, [isAuthenticated, isLoading, isOnline, remoteUser, signIn]);
+
+  useEffect(() => {
+    if (!isAuthenticated || remoteState === undefined) return;
+    if (remoteState === null) {
+      reconciledRef.current = true;
+      return;
+    }
+    const merged = mergeRemoteState(latestState.current, remoteState);
+    reconciledRef.current = true;
+    if (sameSnapshot(merged, latestState.current) && merged.updatedAt === latestState.current.updatedAt) {
+      setSyncStatus({ kind: "synced" });
+      return;
+    }
+    setStoredState(merged);
+    writeLocalState(merged);
+    setSyncStatus({ kind: "synced" });
+  }, [isAuthenticated, remoteState]);
 
   useEffect(() => {
     writeLocalState(storedState);
-    if (sessionUser === null || !reconciledRef.current || !isOnline) return;
+    if (!isAuthenticated || !reconciledRef.current || !isOnline) return;
+    if (remoteState !== undefined && remoteState !== null) {
+      const remoteStored = storedStateFromRemote(remoteState);
+      if (sameSnapshot(storedState, remoteStored) && storedState.updatedAt === remoteStored.updatedAt) {
+        return;
+      }
+    }
     const handle = window.setTimeout(() => {
-      void pushRemoteState(storedState).then((result) => {
-        switch (result.kind) {
-          case "ok":
-            setSyncStatus({ kind: "synced" });
-            return;
-          case "offline":
-            setSyncStatus({ kind: "offline" });
-            return;
-          case "unauthenticated":
-            setSyncStatus({ kind: "local" });
-            return;
-          case "empty":
-          case "error":
-            setSyncStatus({
-              kind: "error",
-              message: result.kind === "error" ? result.message : "Cloud save failed. Changes are still on this device.",
-            });
-            return;
-          default: {
-            const _exhaustive: never = result;
-            return _exhaustive;
-          }
-        }
-      });
+      void saveRemoteState({ state: remoteStateFromStored(storedState) })
+        .then(() => {
+          setSyncStatus({ kind: "synced" });
+        })
+        .catch(() => {
+          setSyncStatus({
+            kind: "error",
+            message: "Cloud save failed. Changes are still on this device.",
+          });
+        });
     }, 400);
     return () => window.clearTimeout(handle);
-  }, [isOnline, sessionUser, storedState]);
+  }, [isAuthenticated, isOnline, remoteState, saveRemoteState, storedState]);
 
   useEffect(() => {
     writeSyncHint(syncStatus);
   }, [syncStatus]);
-
-  useEffect(() => {
-    if (sessionUser === null || !isOnline) return;
-    let cancelled = false;
-    void reconcileWithRemote(latestState.current).then((result) => {
-      if (cancelled) return;
-      reconciledRef.current = true;
-      setStoredState(result.state);
-      writeLocalState(result.state);
-      setSyncStatus(result.status);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [isOnline, sessionUser]);
 
   useEffect(() => {
     const handleOnline = () => setIsOnline(true);
@@ -443,9 +452,11 @@ export default function FocusApp() {
               alertIssue={alertIssue}
               durationLocked={status === "running"}
               onAdjustDuration={adjustDuration}
-              onSignIn={() => void signIn.social({ provider: "discord", callbackURL: "/" })}
+              onSignIn={() => void signIn("discord", { redirectTo: "/" })}
               onSignOut={() => {
                 clearSyncHint();
+                clearCachedUser();
+                setSessionUser(null);
                 void signOut();
               }}
               onToggleAutoStartBreaks={() => updateState((current) => ({
@@ -464,7 +475,7 @@ export default function FocusApp() {
             {account === null ? (
               <Button
                 className="account-cluster-identity"
-                onClick={() => void signIn.social({ provider: "discord", callbackURL: "/" })}
+                onClick={() => void signIn("discord", { redirectTo: "/" })}
                 size="small"
                 variant="ghost"
               >

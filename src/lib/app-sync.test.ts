@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { initialSyncStatus, parseSyncHint } from "./app-sync";
+import { defaultState } from "./app-state";
+import { initialSyncStatus, parseSyncHint, remoteStateFromStored, storedStateFromRemote } from "./app-sync";
 
 describe("sync status first paint", () => {
   test("parseSyncHint only accepts a confirmed synced snapshot", () => {
@@ -22,5 +23,23 @@ describe("sync status first paint", () => {
 
   test("online with a last-known synced hint paints Synced before the probe", () => {
     expect(initialSyncStatus(true, "synced")).toEqual({ kind: "synced" });
+  });
+
+  test("remote snapshots round-trip through the stored shape", () => {
+    const stored = {
+      ...defaultState(),
+      updatedAt: 42,
+      selectedTaskId: "t1",
+      tasks: [{ id: "t1", title: "Read", completed: false, pomodoros: 2 }],
+      preferences: {
+        sound: false,
+        notifications: true,
+        autoStartBreaks: true,
+        focusMinutes: 30,
+        breakMinutes: 10,
+      },
+    };
+
+    expect(storedStateFromRemote(remoteStateFromStored(stored))).toEqual(stored);
   });
 });
